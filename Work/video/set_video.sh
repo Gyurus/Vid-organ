@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Video Audio Language Setter and Organizer
-# Version: 0.6.92
+# Version: 0.6.94
 # Script to check video files for missing audio language metadata
 # and set it interactively
 # Removed items folder
@@ -1247,9 +1247,6 @@ generate_filename_with_audio() {
     # Get all audio languages
     local audio_langs=$(get_all_audio_languages "$file")
     
-    # Count audio tracks
-    local audio_count=$(echo "$audio_langs" | tr '_' '\n' | wc -l)
-    
     # Build filename: title_year_lang1_lang2.extension
     local new_filename=""
     local movie_name_clean=$(echo "$movie_name" | sed 's/ /_/g')
@@ -1260,8 +1257,8 @@ generate_filename_with_audio() {
         new_filename="${movie_name_clean}"
     fi
     
-    # Add audio languages if multiple tracks exist
-    if [ "$audio_count" -gt 1 ] && [ -n "$audio_langs" ]; then
+    # Add audio languages if they exist
+    if [ -n "$audio_langs" ]; then
         new_filename="${new_filename}_${audio_langs}"
     fi
     
@@ -1505,7 +1502,10 @@ get_all_audio_languages() {
     done < <(ffprobe -v quiet -select_streams a -show_entries stream_tags=language -of csv=p=0 "$file" 2>/dev/null)
     
     # Return underscore-separated languages (for filename format: title_year_lang1_lang2.ext)
-    IFS='_' echo "${audio_languages[*]}"
+    if [ ${#audio_languages[@]} -gt 0 ]; then
+        local IFS='_'
+        echo "${audio_languages[*]}"
+    fi
 }
 
 # Function to detect if file is MKV and supports mkvpropedit
