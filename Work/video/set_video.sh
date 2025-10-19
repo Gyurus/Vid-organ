@@ -932,13 +932,13 @@ prompt_for_movie_folder() {
         3)
             # Check if this is GUI option or default folder option
             if [ "$gui_available" = true ]; then
-                echo -e "${BLUE}Opening file picker...${NC}"
+                echo -e "${BLUE}Opening file picker...${NC}" >&2
                 selected_folder=$(pick_folder_gui "$current_dir")
                 if [ -n "$selected_folder" ] && [ -d "$selected_folder" ]; then
                     save_default_folder "$selected_folder"
                     echo "$selected_folder"
                 else
-                    echo -e "${YELLOW}No folder selected, using current directory${NC}"
+                    echo -e "${YELLOW}No folder selected, using current directory${NC}" >&2
                     save_default_folder "$current_dir"
                     echo "$current_dir"
                 fi
