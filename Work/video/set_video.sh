@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Video Audio Language Setter and Organizer
-# Version: 0.7.0
+# Version: 0.7.0.1
 # Script to check video files for missing audio language metadata
 # and set it interactively
 # Removed items folder
