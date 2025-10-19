@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Video Audio Language Setter and Organizer
-# Version: 0.6.5
+# Version: 0.6.6
 # Script to check video files for missing audio language metadata
 # and set it interactively
 # Removed items folder
@@ -1119,6 +1119,43 @@ generate_directory_name() {
     echo "$new_dir_name"
 }
 
+# Function to generate filename with audio languages if multiple tracks exist
+generate_filename_with_audio() {
+    local file="$1"
+    local filename=$(basename "$file")
+    local extension="${filename##*.}"
+    local base_name="${filename%.*}"
+    
+    # Extract movie info
+    local movie_info=$(extract_movie_info "$base_name")
+    local movie_name=$(echo "$movie_info" | cut -d'|' -f1)
+    local year=$(echo "$movie_info" | cut -d'|' -f2)
+    
+    # Get all audio languages
+    local audio_langs=$(get_all_audio_languages "$file")
+    
+    # Count audio tracks
+    local audio_count=$(echo "$audio_langs" | tr '_' '\n' | wc -l)
+    
+    # Build filename
+    local new_filename=""
+    local movie_name_clean=$(echo "$movie_name" | sed 's/ /_/g')
+    
+    if [ -n "$year" ]; then
+        new_filename="${movie_name_clean}_(${year})"
+    else
+        new_filename="${movie_name_clean}"
+    fi
+    
+    # Add audio languages if multiple tracks exist
+    if [ "$audio_count" -gt 1 ] && [ -n "$audio_langs" ]; then
+        new_filename="${new_filename}_${audio_langs}"
+    fi
+    
+    new_filename="${new_filename}.${extension}"
+    echo "$new_filename"
+}
+
 # Function to handle subtitle files - searches original folder recursively and copies to new folder
 move_subtitles_with_movie() {
     local movie_file="$1"
@@ -1205,7 +1242,10 @@ rename_with_languages() {
     local new_dir_name=$(generate_directory_name "$file")
     # Create folder at the ROOT level, not in the current parent directory
     local new_dir_path="${root_dir}/${new_dir_name}"
-    local new_file_path="${new_dir_path}/${new_dir_name}.${extension}"
+    
+    # Generate filename with audio languages if multiple tracks exist
+    local new_filename=$(generate_filename_with_audio "$file")
+    local new_file_path="${new_dir_path}/${new_filename}"
     
     # Verify root directory exists and is valid
     if [ ! -d "$root_dir" ]; then
@@ -1433,6 +1473,29 @@ prompt_sample_removal() {
 get_audio_language() {
     local file="$1"
     ffprobe -v quiet -select_streams a:0 -show_entries stream_tags=language -of csv=p=0 "$file" 2>/dev/null
+}
+
+# Function to get all audio languages from a video file
+get_all_audio_languages() {
+    local file="$1"
+    local audio_languages=()
+    local stream_count=$(ffprobe -v quiet -select_streams a -show_entries stream_tags=language -of csv=p=0 "$file" 2>/dev/null | wc -l)
+    
+    # If no streams found, return empty
+    if [ "$stream_count" -eq 0 ]; then
+        echo ""
+        return
+    fi
+    
+    # Get all audio languages
+    while IFS= read -r lang; do
+        if [ -n "$lang" ]; then
+            audio_languages+=("$lang")
+        fi
+    done < <(ffprobe -v quiet -select_streams a -show_entries stream_tags=language -of csv=p=0 "$file" 2>/dev/null)
+    
+    # Return comma-separated languages
+    IFS='_' echo "${audio_languages[*]}"
 }
 
 # Function to detect if file is MKV and supports mkvpropedit
