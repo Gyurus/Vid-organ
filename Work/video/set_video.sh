@@ -2398,6 +2398,43 @@ check_for_updates() {
                 if [ "$is_newer" = true ]; then
                     echo -e "${YELLOW}⚠ Update available! Remote: v$remote_version (current: v$current_version)${NC}"
                     echo -e "${BLUE}  GitHub: https://github.com/${github_repo}${NC}"
+                    
+                    # Ask user if they want to update right now
+                    local update_now=$(get_user_choice "Do you want to update the script now?" "y" "false")
+                    
+                    if [[ "$update_now" = "y" ]]; then
+                        echo -e "${BLUE}Downloading update...${NC}"
+                        # Download the new script to a temp location
+                        local update_temp="/tmp/set_video_update.sh.$$"
+                        if timeout 15 curl -L -f -s -m 12 \
+                            -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36" \
+                            --compressed \
+                            "$github_raw_url" \
+                            -o "$update_temp" 2>/dev/null; then
+                            
+                            # Verify the downloaded file
+                            if [ -s "$update_temp" ] && head -1 "$update_temp" 2>/dev/null | grep -q "^#!/bin/bash"; then
+                                # Make it executable and replace current script
+                                chmod +x "$update_temp"
+                                local script_path="$0"
+                                if cp "$update_temp" "$script_path"; then
+                                    echo -e "${GREEN}✓ Update successful! (v$remote_version)${NC}"
+                                    echo -e "${YELLOW}⚠ Please restart the script to use the updated version${NC}"
+                                    rm -f "$update_temp"
+                                    sleep 2
+                                    exit 0
+                                else
+                                    echo -e "${RED}✗ Failed to write update to script location${NC}"
+                                    rm -f "$update_temp"
+                                fi
+                            else
+                                echo -e "${RED}✗ Downloaded file validation failed${NC}"
+                                rm -f "$update_temp"
+                            fi
+                        else
+                            echo -e "${RED}✗ Failed to download update${NC}"
+                        fi
+                    fi
                 else
                     echo -e "${GREEN}✓ Version is current (v${current_version})${NC}"
                 fi
