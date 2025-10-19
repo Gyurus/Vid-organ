@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Video Audio Language Setter and Organizer
-# Version: 0.7.0.1
+# Version: 0.7.0.2
 # Script to check video files for missing audio language metadata
 # and set it interactively
 # Removed items folder
@@ -1170,26 +1170,35 @@ extract_movie_info() {
     local movie_name=""
     local year=""
     
-    # First clean the filename from quality indicators
-    local cleaned_filename=$(clean_movie_name "$filename")
-    
-    # Try to extract year in format (YYYY) or [YYYY]
-    if [[ "$cleaned_filename" =~ \(([0-9]{4})\) ]]; then
-        year="${BASH_REMATCH[1]}"
-        # Get everything before (YEAR)
-        movie_name=$(echo "$cleaned_filename" | sed -E 's/\([0-9]{4}\).*//' | sed 's/ *$//')
-    elif [[ "$cleaned_filename" =~ \[([0-9]{4})\] ]]; then
-        year="${BASH_REMATCH[1]}"
-        # Get everything before [YEAR]
-        movie_name=$(echo "$cleaned_filename" | sed -E 's/\[[0-9]{4}\].*//' | sed 's/ *$//')
-    elif [[ "$cleaned_filename" =~ ([0-9]{4}) ]]; then
-        # Any 4-digit year found in the filename
-        year="${BASH_REMATCH[1]}"
-        movie_name=$(echo "$cleaned_filename" | sed -E "s/ *${year}.*$//" | sed 's/ *$//')
+    # FIRST: Try to extract year from format: Title_Year_lang or Title_Year_lang_lang_lang
+    # Pattern: (title)_(year)(_langs)+ where langs are 2-3 lowercase letters
+    if [[ "$filename" =~ ^(.+?)_([0-9]{4})(_[a-z]{2,3})+$ ]]; then
+        movie_name="${BASH_REMATCH[1]}"
+        year="${BASH_REMATCH[2]}"
+        # Convert underscores to spaces in movie name
+        movie_name=$(echo "$movie_name" | sed 's/_/ /g')
     else
-        # No year found, use cleaned filename as is
-        movie_name="$cleaned_filename"
-        year=""
+        # Fall back to cleaning method for non-structured filenames
+        local cleaned_filename=$(clean_movie_name "$filename")
+        
+        # Try to extract year in format (YYYY) or [YYYY]
+        if [[ "$cleaned_filename" =~ \(([0-9]{4})\) ]]; then
+            year="${BASH_REMATCH[1]}"
+            # Get everything before (YEAR)
+            movie_name=$(echo "$cleaned_filename" | sed -E 's/\([0-9]{4}\).*//' | sed 's/ *$//')
+        elif [[ "$cleaned_filename" =~ \[([0-9]{4})\] ]]; then
+            year="${BASH_REMATCH[1]}"
+            # Get everything before [YEAR]
+            movie_name=$(echo "$cleaned_filename" | sed -E 's/\[[0-9]{4}\].*//' | sed 's/ *$//')
+        elif [[ "$cleaned_filename" =~ ([0-9]{4}) ]]; then
+            # Any 4-digit year found in the filename
+            year="${BASH_REMATCH[1]}"
+            movie_name=$(echo "$cleaned_filename" | sed -E "s/ *${year}.*$//" | sed 's/ *$//')
+        else
+            # No year found, use cleaned filename as is
+            movie_name="$cleaned_filename"
+            year=""
+        fi
     fi
     
     # Final cleanup of movie name
