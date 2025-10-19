@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Video Audio Language Setter and Organizer
-# Version: 0.6.94
+# Version: 0.6.95
 # Script to check video files for missing audio language metadata
 # and set it interactively
 # Removed items folder
@@ -692,11 +692,7 @@ check_file_permissions() {
         echo -e "${BLUE}Option 3:${NC} Change ownership of the files first:"
         echo -e "  ${GREEN}sudo chown -R $current_user:$current_user $search_dir${NC}"
         echo
-        local choice=$(get_user_choice "Do you want to continue anyway?" "n" "false")
-        if [[ "$choice" != "y" ]]; then
-            echo "Exiting due to permission issues."
-            exit 1
-        fi
+        echo -e "${YELLOW}⚠ Proceeding with reduced functionality - some files may not be accessible${NC}"
         echo
     else
         echo -e "${GREEN}✓ File permissions look good${NC}"
@@ -790,12 +786,19 @@ pick_folder_gui() {
 
 # Function to prompt for movie folder
 prompt_for_movie_folder() {
-    local default_folder=$(load_default_folder)
+    local skip_default="${1:-false}"  # If true, skip the default folder check
+    local default_folder=""
+    
+    # Only check for default if not skipped
+    if [ "$skip_default" != "true" ]; then
+        default_folder=$(load_default_folder)
+    fi
+    
     local current_dir=$(pwd)
     
     echo -e "${BLUE}--- Movie Folder Setup ---${NC}" >&2
     
-    if [ -n "$default_folder" ] && [ -d "$default_folder" ]; then
+    if [ -n "$default_folder" ] && [ -d "$default_folder" ] && [ "$skip_default" != "true" ]; then
         echo -e "${GREEN}Current default movie folder: $default_folder${NC}" >&2
         echo -n "Use this folder? [Y/n]: " >&2
         
@@ -1948,6 +1951,10 @@ process_video_file() {
 # Main function
 main() {
     local search_dir="$1"
+    
+    # Normalize path to absolute path
+    search_dir=$(realpath "$search_dir" 2>/dev/null || echo "$search_dir")
+    
     local video_extensions="avi|mkv|mp4|mov|wmv|flv|webm|m4v|mpg|mpeg|3gp|ogv"
     local player
     local file_count=0
@@ -2556,9 +2563,11 @@ if [ -z "$SEARCH_DIR" ]; then
         if [[ "$use_default" = "y" ]]; then
             SEARCH_DIR="$default_folder"
         else
-            SEARCH_DIR=$(prompt_for_movie_folder)
+            # User said no, show folder selection menu (skip the default check since we already asked)
+            SEARCH_DIR=$(prompt_for_movie_folder "true")
         fi
     else
+        # No default folder saved, show full selection menu
         SEARCH_DIR=$(prompt_for_movie_folder)
     fi
     echo
