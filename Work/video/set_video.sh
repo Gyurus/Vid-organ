@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Video Audio Language Setter and Organizer
-# Version: 0.6.95
+# Version: 0.7.0
 # Script to check video files for missing audio language metadata
 # and set it interactively
 # Removed items folder
@@ -1206,6 +1206,79 @@ extract_movie_info() {
     echo "${movie_name}|${year}"
 }
 
+# Function to search IMDB for missing movie year information
+search_imdb_for_year() {
+    local movie_name="$1"
+    
+    # Validate input
+    if [ -z "$movie_name" ]; then
+        echo ""
+        return 1
+    fi
+    
+    # Check if curl is available
+    if ! command -v curl &> /dev/null; then
+        echo -e "${YELLOW}⚠ curl not found, skipping IMDB search${NC}" >&2
+        echo ""
+        return 1
+    fi
+    
+    echo -e "${BLUE}🔍 Searching IMDB for: $movie_name${NC}" >&2
+    
+    # Encode the movie name for URL
+    local encoded_name=$(echo "$movie_name" | sed 's/ /+/g')
+    
+    # Search IMDB and extract year from the first result
+    # IMDB search URL format: https://www.imdb.com/find?q=movie+name
+    local response=$(curl -s "https://www.imdb.com/find?q=${encoded_name}&s=tt&ttype=ft" 2>/dev/null)
+    
+    if [ -z "$response" ]; then
+        echo -e "${YELLOW}⚠ Could not reach IMDB${NC}" >&2
+        echo ""
+        return 1
+    fi
+    
+    # Extract the first movie result with year using grep and sed
+    # Looking for pattern: Movie Title (YYYY)
+    local year=$(echo "$response" | grep -oP '>\K[^<]*\(\d{4}\)' | head -1 | grep -oP '\(\K\d{4}')
+    
+    if [ -n "$year" ]; then
+        echo -e "${GREEN}✓ IMDB found year: $year${NC}" >&2
+        echo "$year"
+        return 0
+    else
+        echo -e "${YELLOW}⚠ No year found on IMDB for: $movie_name${NC}" >&2
+        echo ""
+        return 1
+    fi
+}
+
+# Function to get movie year from various sources (filename, folder, or IMDB)
+get_movie_year() {
+    local movie_name="$1"
+    local current_year="$2"
+    local enable_imdb="${3:-true}"
+    
+    # If year already found, return it
+    if [ -n "$current_year" ]; then
+        echo "$current_year"
+        return 0
+    fi
+    
+    # If IMDB search is enabled and movie has a name, try to search
+    if [ "$enable_imdb" = "true" ] && [ -n "$movie_name" ]; then
+        local imdb_year=$(search_imdb_for_year "$movie_name")
+        if [ -n "$imdb_year" ]; then
+            echo "$imdb_year"
+            return 0
+        fi
+    fi
+    
+    # No year found from any source
+    echo ""
+    return 1
+}
+
 # Function to generate new directory name based on movie info only
 generate_directory_name() {
     local file="$1"
@@ -1217,6 +1290,11 @@ generate_directory_name() {
     local movie_info=$(extract_movie_info "$base_name")
     local movie_name=$(echo "$movie_info" | cut -d'|' -f1)
     local year=$(echo "$movie_info" | cut -d'|' -f2)
+    
+    # Try to get year from IMDB if not found in filename
+    if [ -z "$year" ]; then
+        year=$(get_movie_year "$movie_name" "$year" "true")
+    fi
     
     # Build new directory name: Title.Year format (no parentheses)
     local new_dir_name=""
@@ -1247,6 +1325,11 @@ generate_filename_with_audio() {
     local movie_name=$(echo "$movie_info" | cut -d'|' -f1)
     local year=$(echo "$movie_info" | cut -d'|' -f2)
     
+    # Try to get year from IMDB if not found in filename
+    if [ -z "$year" ]; then
+        year=$(get_movie_year "$movie_name" "$year" "true")
+    fi
+    
     # Get all audio languages from the actual file
     local audio_langs=$(get_all_audio_languages "$file")
     
@@ -1260,26 +1343,31 @@ generate_filename_with_audio() {
         new_filename="${movie_name_clean}"
     fi
     
-    # Check if the base_name already contains language codes after the year
-    # Pattern: title_year_lang1_lang2... 
-    # Language codes are 2-3 lowercase letters
+    # Check if the base_name already contains ANY language codes
+    # Language codes are 2-3 lowercase letters separated by underscores
     local has_existing_langs=false
-    if [ -n "$year" ]; then
-        # Check if there are language-like patterns after the year
-        local after_year=$(echo "$base_name" | sed "s/^.*_${year}//")
-        # If there's content after year and it matches language pattern, skip adding languages
-        if [ -n "$after_year" ] && [[ "$after_year" =~ ^(_[a-z]{2,3})+$ ]]; then
-            has_existing_langs=true
-        fi
+    local existing_langs=""
+    
+    # Remove duplicates from audio_langs to prevent re-adding same languages
+    local unique_audio_langs=""
+    if [ -n "$audio_langs" ]; then
+        # Split audio_langs by underscore and get unique values
+        unique_audio_langs=$(echo "$audio_langs" | tr '_' '\n' | sort -u | tr '\n' '_' | sed 's/_$//')
+    fi
+    
+    # Check if filename already ends with language codes (pattern: _lang1_lang2...)
+    if [[ "$base_name" =~ _([a-z]{2,3})(_[a-z]{2,3})*$ ]]; then
+        has_existing_langs=true
+        # Extract existing language metadata
+        existing_langs=$(echo "$base_name" | sed 's/.*\(_[a-z]\{2,3\}\(_[a-z]\{2,3\}\)*\)$/\1/' | sed 's/^_//')
     fi
     
     # Add audio languages only if they don't already exist in the filename
-    if [ -n "$audio_langs" ] && [ "$has_existing_langs" = false ]; then
-        new_filename="${new_filename}_${audio_langs}"
-    elif [ "$has_existing_langs" = true ]; then
-        # Keep existing language metadata from filename
-        local after_year=$(echo "$base_name" | sed "s/^.*_${year}//")
-        new_filename="${new_filename}${after_year}"
+    if [ -n "$unique_audio_langs" ] && [ "$has_existing_langs" = false ]; then
+        new_filename="${new_filename}_${unique_audio_langs}"
+    elif [ "$has_existing_langs" = true ] && [ -n "$existing_langs" ]; then
+        # Keep existing language metadata from filename (don't add again)
+        new_filename="${new_filename}_${existing_langs}"
     fi
     
     new_filename="${new_filename}.${extension}"
