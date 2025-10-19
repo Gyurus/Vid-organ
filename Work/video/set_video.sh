@@ -709,7 +709,7 @@ save_default_folder() {
     # Convert to absolute path
     local abs_folder=$(realpath "$folder" 2>/dev/null || echo "$folder")
     echo "DEFAULT_MOVIE_FOLDER=\"$abs_folder\"" > "$CONFIG_FILE"
-    echo -e "${GREEN}✓ Saved '$abs_folder' as default movie folder${NC}"
+    echo -e "${GREEN}✓ Saved '$abs_folder' as default movie folder${NC}" >&2
     
     # Also save to INI file
     set_ini_setting "default_folder" "$abs_folder"
