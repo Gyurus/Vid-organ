@@ -1250,19 +1250,19 @@ generate_filename_with_audio() {
     # Count audio tracks
     local audio_count=$(echo "$audio_langs" | tr '_' '\n' | wc -l)
     
-    # Build filename: title.year.lang1.lang2.extension
+    # Build filename: title_year_lang1_lang2.extension
     local new_filename=""
     local movie_name_clean=$(echo "$movie_name" | sed 's/ /_/g')
     
     if [ -n "$year" ]; then
-        new_filename="${movie_name_clean}.${year}"
+        new_filename="${movie_name_clean}_${year}"
     else
         new_filename="${movie_name_clean}"
     fi
     
     # Add audio languages if multiple tracks exist
     if [ "$audio_count" -gt 1 ] && [ -n "$audio_langs" ]; then
-        new_filename="${new_filename}.${audio_langs}"
+        new_filename="${new_filename}_${audio_langs}"
     fi
     
     new_filename="${new_filename}.${extension}"
@@ -1504,8 +1504,8 @@ get_all_audio_languages() {
         fi
     done < <(ffprobe -v quiet -select_streams a -show_entries stream_tags=language -of csv=p=0 "$file" 2>/dev/null)
     
-    # Return dot-separated languages (for filename format: title.year.lang1.lang2.ext)
-    IFS='.' echo "${audio_languages[*]}"
+    # Return underscore-separated languages (for filename format: title_year_lang1_lang2.ext)
+    IFS='_' echo "${audio_languages[*]}"
 }
 
 # Function to detect if file is MKV and supports mkvpropedit
