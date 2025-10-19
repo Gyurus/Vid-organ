@@ -1247,7 +1247,7 @@ generate_filename_with_audio() {
     local movie_name=$(echo "$movie_info" | cut -d'|' -f1)
     local year=$(echo "$movie_info" | cut -d'|' -f2)
     
-    # Get all audio languages
+    # Get all audio languages from the actual file
     local audio_langs=$(get_all_audio_languages "$file")
     
     # Build filename: title_year_lang1_lang2.extension
@@ -1260,9 +1260,26 @@ generate_filename_with_audio() {
         new_filename="${movie_name_clean}"
     fi
     
-    # Add audio languages if they exist
-    if [ -n "$audio_langs" ]; then
+    # Check if the base_name already contains language codes after the year
+    # Pattern: title_year_lang1_lang2... 
+    # Language codes are 2-3 lowercase letters
+    local has_existing_langs=false
+    if [ -n "$year" ]; then
+        # Check if there are language-like patterns after the year
+        local after_year=$(echo "$base_name" | sed "s/^.*_${year}//")
+        # If there's content after year and it matches language pattern, skip adding languages
+        if [ -n "$after_year" ] && [[ "$after_year" =~ ^(_[a-z]{2,3})+$ ]]; then
+            has_existing_langs=true
+        fi
+    fi
+    
+    # Add audio languages only if they don't already exist in the filename
+    if [ -n "$audio_langs" ] && [ "$has_existing_langs" = false ]; then
         new_filename="${new_filename}_${audio_langs}"
+    elif [ "$has_existing_langs" = true ]; then
+        # Keep existing language metadata from filename
+        local after_year=$(echo "$base_name" | sed "s/^.*_${year}//")
+        new_filename="${new_filename}${after_year}"
     fi
     
     new_filename="${new_filename}.${extension}"
