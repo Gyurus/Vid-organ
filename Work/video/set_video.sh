@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Video Audio Language Setter and Organizer
-# Version: 0.6.6
+# Version: 0.6.7
 # Script to check video files for missing audio language metadata
 # and set it interactively
 # Removed items folder
@@ -16,6 +16,7 @@ INI_CONFIG_FILE="$SCRIPT_DIR/set_audio.ini"
 
 # Default settings in INI format
 declare -A INI_SETTINGS=(
+    [ini_version]="0.0.0"
     [enable_sample_removal]="true"
     [enable_rename]="true"
     [enable_update_check]="true"
@@ -29,6 +30,23 @@ declare -A INI_SETTINGS=(
     [subtitle_extensions]="srt|sub|ass|ssa|vtt|smi"
     [removed_folder_name]="Aa.removed"
 )
+
+# Function to validate INI file version and failsafe
+validate_ini_version() {
+    if [ -f "$INI_CONFIG_FILE" ]; then
+        # Check if ini_version exists in the INI file
+        if ! grep -q "^ini_version=" "$INI_CONFIG_FILE"; then
+            echo -e "${YELLOW}⚠ INI file missing version number, recreating...${NC}" >&2
+            rm -f "$INI_CONFIG_FILE"
+            # Update ini_version to current script version before saving
+            INI_SETTINGS[ini_version]="$SCRIPT_VERSION"
+            save_ini_config
+            return 0
+        fi
+        return 0
+    fi
+    return 1
+}
 
 # Function to load INI configuration
 load_ini_config() {
@@ -54,6 +72,9 @@ load_ini_config() {
 # Function to save INI configuration
 save_ini_config() {
     local temp_file="${INI_CONFIG_FILE}.tmp"
+    
+    # Ensure ini_version is always set to current script version
+    INI_SETTINGS[ini_version]="$SCRIPT_VERSION"
     
     # Write to temp file first
     {
@@ -1863,41 +1884,35 @@ process_video_file() {
     # First check if ANY audio track is undefined
     if has_undefined_audio_track "$file"; then
         echo -e "${YELLOW}⚠ Some audio tracks don't have language metadata${NC}"
-        local choice=$(get_user_choice "Do you want to set language for undefined audio track(s)?" "y")
         
-        if [[ "$choice" = "y" ]]; then
-            # Play the video file so user can hear the audio
-            play_video "$file" "$player"
-            
-            # Prompt for language(s)
-            echo -n "Enter audio language code(s) for all tracks (e.g., 'eng' or 'eng hun fra'): "
-            read -r languages </dev/tty
-            
-            # Use default if empty
-            if [ -z "$languages" ]; then
-                languages="eng"
-            fi
-            
-            # For now, set the first language for the first track
-            local first_lang=$(echo "$languages" | cut -d' ' -f1)
-            
-            # Validate language code (basic check for 2-3 character codes)
-            if [[ ! "$first_lang" =~ ^[a-z]{2,3}$ ]]; then
-                echo -e "${RED}Warning: '$first_lang' doesn't look like a standard language code${NC}"
-                local choice=$(get_user_choice "Continue anyway?" "n" "false")
-                if [[ "$choice" != "y" ]]; then
-                    echo "Skipping file..."
-                    return 0
-                fi
-            fi
-            
-            # Set the language
-            set_audio_language "$file" "$first_lang"
-            return 0
-        else
-            echo -e "${YELLOW}Keeping undefined audio track(s)${NC}"
-            return 0
+        # Auto-play the video file so user can hear the audio
+        play_video "$file" "$player"
+        
+        # Prompt for language(s) after video playback
+        echo -n "Enter audio language code(s) for all tracks (e.g., 'eng' or 'eng hun fra'): "
+        read -r languages </dev/tty
+        
+        # Use default if empty
+        if [ -z "$languages" ]; then
+            languages="eng"
         fi
+        
+        # For now, set the first language for the first track
+        local first_lang=$(echo "$languages" | cut -d' ' -f1)
+        
+        # Validate language code (basic check for 2-3 character codes)
+        if [[ ! "$first_lang" =~ ^[a-z]{2,3}$ ]]; then
+            echo -e "${RED}Warning: '$first_lang' doesn't look like a standard language code${NC}"
+            local choice=$(get_user_choice "Continue anyway?" "n" "false")
+            if [[ "$choice" != "y" ]]; then
+                echo "Skipping file..."
+                return 0
+            fi
+        fi
+        
+        # Set the language
+        set_audio_language "$file" "$first_lang"
+        return 0
     fi
     
     # Check if audio language is set
@@ -1907,38 +1922,32 @@ process_video_file() {
         # Check if language is undefined (und)
         if [ "$current_lang" = "und" ]; then
             echo -e "${YELLOW}⚠ Audio language is set to 'und' (undefined)${NC}"
-            local choice=$(get_user_choice "Do you want to set the correct language for this file?" "y")
             
-            if [[ "$choice" = "y" ]]; then
-                # Play the video file
-                play_video "$file" "$player"
-                
-                # Prompt for language
-                echo -n "Enter audio language code (default: eng): "
-                read -r language </dev/tty
-                
-                # Use default if empty
-                if [ -z "$language" ]; then
-                    language="eng"
-                fi
-                
-                # Validate language code (basic check for 2-3 character codes)
-                if [[ ! "$language" =~ ^[a-z]{2,3}$ ]]; then
-                    echo -e "${RED}Warning: '$language' doesn't look like a standard language code${NC}"
-                    local choice=$(get_user_choice "Continue anyway?" "n" "false")
-                    if [[ "$choice" != "y" ]]; then
-                        echo "Skipping file..."
-                        return 0
-                    fi
-                fi
-                
-                # Set the language
-                set_audio_language "$file" "$language"
-                return 0
-            else
-                echo -e "${GREEN}✓ Audio language set to: ${current_lang} (kept as is)${NC}"
-                return 0
+            # Auto-play the video file
+            play_video "$file" "$player"
+            
+            # Prompt for language after video playback
+            echo -n "Enter audio language code (default: eng): "
+            read -r language </dev/tty
+            
+            # Use default if empty
+            if [ -z "$language" ]; then
+                language="eng"
             fi
+            
+            # Validate language code (basic check for 2-3 character codes)
+            if [[ ! "$language" =~ ^[a-z]{2,3}$ ]]; then
+                echo -e "${RED}Warning: '$language' doesn't look like a standard language code${NC}"
+                local choice=$(get_user_choice "Continue anyway?" "n" "false")
+                if [[ "$choice" != "y" ]]; then
+                    echo "Skipping file..."
+                    return 0
+                fi
+            fi
+            
+            # Set the language
+            set_audio_language "$file" "$language"
+            return 0
         else
             echo -e "${GREEN}✓ Audio language already set: ${current_lang}${NC}"
             return 0
@@ -1947,18 +1956,10 @@ process_video_file() {
     
     echo -e "${YELLOW}⚠ No audio language metadata found${NC}"
     
-    # Ask user if they want to process this file
-    local choice=$(get_user_choice "Do you want to set audio language for this file?" "y")
-    
-    if [[ "$choice" != "y" ]]; then
-        echo "Skipping file..."
-        return 0
-    fi
-    
-    # Play the video file
+    # Auto-play the video file so user can hear the audio
     play_video "$file" "$player"
     
-    # Prompt for language
+    # Prompt for language after video playback
     echo -n "Enter audio language code (default: eng): "
     read -r language </dev/tty
     
@@ -2431,6 +2432,9 @@ echo -e "${BLUE}Loading configuration...${NC}"
 if ! load_ini_config; then
     echo -e "${YELLOW}No $INI_CONFIG_FILE found, using defaults${NC}"
 fi
+
+# Validate INI file version and recreate if missing
+validate_ini_version
 
 # Apply INI settings to variables
 ENABLE_SAMPLE_REMOVAL=$(get_ini_setting "enable_sample_removal")
