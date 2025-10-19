@@ -18,6 +18,7 @@ INI_CONFIG_FILE="$SCRIPT_DIR/set_audio.ini"
 declare -A INI_SETTINGS=(
     [enable_sample_removal]="true"
     [enable_rename]="true"
+    [enable_update_check]="true"
     [default_audio_language]="hun"
     [default_player]="smplayer"
     [auto_organize]="true"
@@ -2230,11 +2231,7 @@ echo -e "${GREEN}║${NC}  Video Audio Language Setter - v${SCRIPT_VERSION}${NC}
 echo -e "${GREEN}╚══════════════════════════════════════════════╝${NC}"
 echo
 
-# Check for updates on startup
-check_for_updates "$SCRIPT_VERSION"
-echo
-
-# Load INI configuration at startup
+# Load INI configuration at startup (before update check)
 echo -e "${BLUE}Loading configuration...${NC}"
 if ! load_ini_config; then
     echo -e "${YELLOW}No $INI_CONFIG_FILE found, using defaults${NC}"
@@ -2243,6 +2240,16 @@ fi
 # Apply INI settings to variables
 ENABLE_SAMPLE_REMOVAL=$(get_ini_setting "enable_sample_removal")
 ENABLE_RENAME=$(get_ini_setting "enable_rename")
+ENABLE_UPDATE_CHECK=$(get_ini_setting "enable_update_check")
+DEFAULT_AUDIO_LANGUAGE=$(get_ini_setting "default_audio_language")
+
+# Check for updates on startup (if enabled)
+if [ "$ENABLE_UPDATE_CHECK" = "true" ]; then
+    check_for_updates "$SCRIPT_VERSION"
+else
+    echo -e "${BLUE}ℹ Version: $SCRIPT_VERSION (update check disabled)${NC}"
+fi
+echo
 
 # Apply removed folder name from INI
 REMOVED_FOLDER=$(get_ini_setting "removed_folder_name")
