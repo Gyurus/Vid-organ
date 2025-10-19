@@ -956,6 +956,39 @@ check_audio_language() {
     fi
 }
 
+# Function to check if ANY audio track is missing language metadata
+has_undefined_audio_track() {
+    local file="$1"
+    local undefined_tracks=0
+    local total_tracks=0
+    
+    # Get all audio track information
+    local stream_info=$(ffprobe -v quiet -select_streams a -show_entries stream_index,stream_tags=language -of csv=p=0 "$file" 2>/dev/null)
+    
+    if [ -z "$stream_info" ]; then
+        return 1  # No audio streams
+    fi
+    
+    # Check each line for language info
+    while IFS= read -r line; do
+        if [ -n "$line" ]; then
+            ((total_tracks++))
+            # If line is just a number (stream index) with no language, track is undefined
+            if [[ "$line" =~ ^[0-9]+$ ]]; then
+                ((undefined_tracks++))
+            fi
+        fi
+    done <<< "$stream_info"
+    
+    # Return 0 (success/true) if any tracks are undefined
+    if [ "$undefined_tracks" -gt 0 ]; then
+        echo -e "${YELLOW}ℹ Found $undefined_tracks of $total_tracks audio track(s) without language metadata${NC}" >&2
+        return 0  # Has undefined tracks
+    fi
+    
+    return 1  # All tracks have language metadata
+}
+
 # Function to check if file is a sample file (less than 400MB and has "sample" in name)
 is_sample_file() {
     local file="$1"
@@ -1827,6 +1860,46 @@ process_video_file() {
     
     echo -e "\n${BLUE}Processing: $file${NC}"
     
+    # First check if ANY audio track is undefined
+    if has_undefined_audio_track "$file"; then
+        echo -e "${YELLOW}⚠ Some audio tracks don't have language metadata${NC}"
+        local choice=$(get_user_choice "Do you want to set language for undefined audio track(s)?" "y")
+        
+        if [[ "$choice" = "y" ]]; then
+            # Play the video file so user can hear the audio
+            play_video "$file" "$player"
+            
+            # Prompt for language(s)
+            echo -n "Enter audio language code(s) for all tracks (e.g., 'eng' or 'eng hun fra'): "
+            read -r languages </dev/tty
+            
+            # Use default if empty
+            if [ -z "$languages" ]; then
+                languages="eng"
+            fi
+            
+            # For now, set the first language for the first track
+            local first_lang=$(echo "$languages" | cut -d' ' -f1)
+            
+            # Validate language code (basic check for 2-3 character codes)
+            if [[ ! "$first_lang" =~ ^[a-z]{2,3}$ ]]; then
+                echo -e "${RED}Warning: '$first_lang' doesn't look like a standard language code${NC}"
+                local choice=$(get_user_choice "Continue anyway?" "n" "false")
+                if [[ "$choice" != "y" ]]; then
+                    echo "Skipping file..."
+                    return 0
+                fi
+            fi
+            
+            # Set the language
+            set_audio_language "$file" "$first_lang"
+            return 0
+        else
+            echo -e "${YELLOW}Keeping undefined audio track(s)${NC}"
+            return 0
+        fi
+    fi
+    
     # Check if audio language is set
     if check_audio_language "$file"; then
         current_lang=$(get_audio_language "$file")
@@ -2057,25 +2130,43 @@ main() {
                     print_status "No audio language metadata" "warn"
                 fi
             fi
+            
+            # Also check if ANY audio track is undefined (for multi-track files)
+            if has_undefined_audio_track "$file"; then
+                if [ -z "$status" ] || [ "$status" = "has_language" ]; then
+                    status="has_undefined_tracks"
+                    print_status "Some audio tracks missing language metadata" "warn"
+                fi
+            fi
         fi
         
         # Process the file for language setting
-        if process_video_file "$file" "$player"; then
-            ((processed_count++))
-            # Check if language was updated from undefined or none
-            if [ -f "$file" ]; then
-                new_lang=$(get_audio_language "$file" 2>/dev/null)
-                if [ -n "$new_lang" ] && [ "$new_lang" != "N/A" ]; then
-                    # Check if language changed from und or none
-                    if [ "$current_lang" = "und" ] && [ "$new_lang" != "und" ]; then
-                        current_lang="$new_lang"
-                        status="language_updated"
-                    elif [ "$current_lang" = "none" ] && [ "$new_lang" != "" ]; then
-                        current_lang="$new_lang"
-                        status="language_set"
+        # Check if we need to process for undefined audio or undefined tracks
+        if [ "$status" = "no_language" ] || [ "$status" = "has_und_language" ] || [ "$status" = "has_undefined_tracks" ]; then
+            # Need to set audio language
+            if process_video_file "$file" "$player"; then
+                ((processed_count++))
+                # Check if language was updated from undefined or none
+                if [ -f "$file" ]; then
+                    new_lang=$(get_audio_language "$file" 2>/dev/null)
+                    if [ -n "$new_lang" ] && [ "$new_lang" != "N/A" ]; then
+                        # Check if language changed from und or none
+                        if [ "$current_lang" = "und" ] && [ "$new_lang" != "und" ]; then
+                            current_lang="$new_lang"
+                            status="language_updated"
+                        elif [ "$current_lang" = "none" ] && [ "$new_lang" != "" ]; then
+                            current_lang="$new_lang"
+                            status="language_set"
+                        elif [ "$status" = "has_undefined_tracks" ] && [ -z "$new_lang" ]; then
+                            # User might have set language for tracks
+                            status="language_updated_multi"
+                        fi
                     fi
                 fi
             fi
+        else
+            # File already has complete audio language metadata, just skip to organization
+            ((processed_count++))
         fi
         
         # Offer to rename/move file into its own directory (for all video files)
