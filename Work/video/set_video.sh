@@ -2305,6 +2305,7 @@ done
 # Function to check if a newer version is available on GitHub
 check_for_updates() {
     local current_version="$1"
+    local auto_update="${2:-false}"  # If true, automatically download without prompting
     local github_repo="Gyurus/Vid-organ"
     local github_branch="main"
     local script_filename="Work/video/set_video.sh"
@@ -2360,97 +2361,132 @@ check_for_updates() {
                 fi
                 
                 if [ "$is_newer" = true ]; then
-                    echo -e "${YELLOW}⚠ Update available! Remote: v$remote_version (current: v$current_version)${NC}"
-                    echo -e "${BLUE}  GitHub: https://github.com/${github_repo}${NC}"
-                    echo
-                    echo -e "${BLUE}Update options:${NC}"
-                    echo -e "  ${GREEN}y${NC} - Update now"
-                    echo -e "  ${GREEN}n${NC} - Skip for now"
-                    echo -e "  ${GREEN}a${NC} - Auto-update on every startup (saves to INI)"
-                    echo -e "  ${GREEN}e${NC} - Exit without updating"
-                    echo -n "Choose an option (y/n/a/e): "
-                    read -r update_choice </dev/tty
-                    
-                    case "$update_choice" in
-                        y|Y)
-                            echo -e "${BLUE}Downloading update...${NC}"
-                            # Download the new script to a temp location
-                            local update_temp="/tmp/set_video_update.sh.$$"
-                            if timeout 15 curl -L -f -s -m 12 \
-                                -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36" \
-                                --compressed \
-                                "$github_raw_url" \
-                                -o "$update_temp" 2>/dev/null; then
-                                
-                                # Verify the downloaded file
-                                if [ -s "$update_temp" ] && head -1 "$update_temp" 2>/dev/null | grep -q "^#!/bin/bash"; then
-                                    # Make it executable and replace current script
-                                    chmod +x "$update_temp"
-                                    local script_path="$0"
-                                    if cp "$update_temp" "$script_path"; then
-                                        echo -e "${GREEN}✓ Update successful! (v$remote_version)${NC}"
-                                        echo -e "${YELLOW}⚠ Please restart the script to use the updated version${NC}"
-                                        rm -f "$update_temp"
-                                        sleep 2
-                                        exit 0
-                                    else
-                                        echo -e "${RED}✗ Failed to write update to script location${NC}"
-                                        rm -f "$update_temp"
-                                    fi
+                    # If auto-update is enabled, download silently
+                    if [ "$auto_update" = "true" ]; then
+                        echo -e "${BLUE}⚙ Auto-updating from v$current_version to v$remote_version...${NC}"
+                        local update_temp="/tmp/set_video_update.sh.$$"
+                        if timeout 15 curl -L -f -s -m 12 \
+                            -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36" \
+                            --compressed \
+                            "$github_raw_url" \
+                            -o "$update_temp" 2>/dev/null; then
+                            
+                            # Verify the downloaded file
+                            if [ -s "$update_temp" ] && head -1 "$update_temp" 2>/dev/null | grep -q "^#!/bin/bash"; then
+                                # Make it executable and replace current script
+                                chmod +x "$update_temp"
+                                local script_path="$0"
+                                if cp "$update_temp" "$script_path"; then
+                                    echo -e "${GREEN}✓ Auto-update successful! (v$remote_version)${NC}"
+                                    echo -e "${YELLOW}⚠ Please restart the script to use the updated version${NC}"
+                                    rm -f "$update_temp"
+                                    sleep 2
+                                    exit 0
                                 else
-                                    echo -e "${RED}✗ Downloaded file validation failed${NC}"
+                                    echo -e "${RED}✗ Failed to write update to script location${NC}"
                                     rm -f "$update_temp"
                                 fi
                             else
-                                echo -e "${RED}✗ Failed to download update${NC}"
+                                echo -e "${RED}✗ Downloaded file validation failed${NC}"
+                                rm -f "$update_temp"
                             fi
-                            ;;
-                        n|N)
-                            echo -e "${YELLOW}⚠ Update skipped${NC}"
-                            ;;
-                        a|A)
-                            echo -e "${BLUE}✓ Auto-update enabled and saved to INI${NC}"
-                            set_ini_setting "enable_update_check" "true"
-                            echo -e "${BLUE}Downloading update...${NC}"
-                            # Download the new script to a temp location
-                            local update_temp="/tmp/set_video_update.sh.$$"
-                            if timeout 15 curl -L -f -s -m 12 \
-                                -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36" \
-                                --compressed \
-                                "$github_raw_url" \
-                                -o "$update_temp" 2>/dev/null; then
-                                
-                                # Verify the downloaded file
-                                if [ -s "$update_temp" ] && head -1 "$update_temp" 2>/dev/null | grep -q "^#!/bin/bash"; then
-                                    # Make it executable and replace current script
-                                    chmod +x "$update_temp"
-                                    local script_path="$0"
-                                    if cp "$update_temp" "$script_path"; then
-                                        echo -e "${GREEN}✓ Update successful! (v$remote_version)${NC}"
-                                        echo -e "${YELLOW}⚠ Please restart the script to use the updated version${NC}"
-                                        rm -f "$update_temp"
-                                        sleep 2
-                                        exit 0
+                        else
+                            echo -e "${RED}✗ Failed to download update${NC}"
+                        fi
+                    else
+                        # Interactive prompt if auto-update is not enabled
+                        echo -e "${YELLOW}⚠ Update available! Remote: v$remote_version (current: v$current_version)${NC}"
+                        echo -e "${BLUE}  GitHub: https://github.com/${github_repo}${NC}"
+                        echo
+                        echo -e "${BLUE}Update options:${NC}"
+                        echo -e "  ${GREEN}y${NC} - Update now"
+                        echo -e "  ${GREEN}n${NC} - Skip for now"
+                        echo -e "  ${GREEN}a${NC} - Auto-update on every startup (saves to INI)"
+                        echo -e "  ${GREEN}e${NC} - Exit without updating"
+                        echo -n "Choose an option (y/n/a/e): "
+                        read -r update_choice </dev/tty
+                        
+                        case "$update_choice" in
+                            y|Y)
+                                echo -e "${BLUE}Downloading update...${NC}"
+                                # Download the new script to a temp location
+                                local update_temp="/tmp/set_video_update.sh.$$"
+                                if timeout 15 curl -L -f -s -m 12 \
+                                    -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36" \
+                                    --compressed \
+                                    "$github_raw_url" \
+                                    -o "$update_temp" 2>/dev/null; then
+                                    
+                                    # Verify the downloaded file
+                                    if [ -s "$update_temp" ] && head -1 "$update_temp" 2>/dev/null | grep -q "^#!/bin/bash"; then
+                                        # Make it executable and replace current script
+                                        chmod +x "$update_temp"
+                                        local script_path="$0"
+                                        if cp "$update_temp" "$script_path"; then
+                                            echo -e "${GREEN}✓ Update successful! (v$remote_version)${NC}"
+                                            echo -e "${YELLOW}⚠ Please restart the script to use the updated version${NC}"
+                                            rm -f "$update_temp"
+                                            sleep 2
+                                            exit 0
+                                        else
+                                            echo -e "${RED}✗ Failed to write update to script location${NC}"
+                                            rm -f "$update_temp"
+                                        fi
                                     else
-                                        echo -e "${RED}✗ Failed to write update to script location${NC}"
+                                        echo -e "${RED}✗ Downloaded file validation failed${NC}"
                                         rm -f "$update_temp"
                                     fi
                                 else
-                                    echo -e "${RED}✗ Downloaded file validation failed${NC}"
-                                    rm -f "$update_temp"
+                                    echo -e "${RED}✗ Failed to download update${NC}"
                                 fi
-                            else
-                                echo -e "${RED}✗ Failed to download update${NC}"
-                            fi
-                            ;;
-                        e|E)
-                            echo -e "${YELLOW}⚠ Exiting without updating${NC}"
-                            exit 0
-                            ;;
-                        *)
-                            echo -e "${YELLOW}⚠ Invalid option. Update skipped${NC}"
-                            ;;
-                    esac
+                                ;;
+                            n|N)
+                                echo -e "${YELLOW}⚠ Update skipped${NC}"
+                                ;;
+                            a|A)
+                                echo -e "${BLUE}✓ Auto-update enabled and saved to INI${NC}"
+                                set_ini_setting "enable_update_check" "true"
+                                echo -e "${BLUE}Downloading update...${NC}"
+                                # Download the new script to a temp location
+                                local update_temp="/tmp/set_video_update.sh.$$"
+                                if timeout 15 curl -L -f -s -m 12 \
+                                    -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36" \
+                                    --compressed \
+                                    "$github_raw_url" \
+                                    -o "$update_temp" 2>/dev/null; then
+                                    
+                                    # Verify the downloaded file
+                                    if [ -s "$update_temp" ] && head -1 "$update_temp" 2>/dev/null | grep -q "^#!/bin/bash"; then
+                                        # Make it executable and replace current script
+                                        chmod +x "$update_temp"
+                                        local script_path="$0"
+                                        if cp "$update_temp" "$script_path"; then
+                                            echo -e "${GREEN}✓ Update successful! (v$remote_version)${NC}"
+                                            echo -e "${YELLOW}⚠ Please restart the script to use the updated version${NC}"
+                                            rm -f "$update_temp"
+                                            sleep 2
+                                            exit 0
+                                        else
+                                            echo -e "${RED}✗ Failed to write update to script location${NC}"
+                                            rm -f "$update_temp"
+                                        fi
+                                    else
+                                        echo -e "${RED}✗ Downloaded file validation failed${NC}"
+                                        rm -f "$update_temp"
+                                    fi
+                                else
+                                    echo -e "${RED}✗ Failed to download update${NC}"
+                                fi
+                                ;;
+                            e|E)
+                                echo -e "${YELLOW}⚠ Exiting without updating${NC}"
+                                exit 0
+                                ;;
+                            *)
+                                echo -e "${YELLOW}⚠ Invalid option. Update skipped${NC}"
+                                ;;
+                        esac
+                    fi
                 else
                     echo -e "${GREEN}✓ Version is current (v${current_version})${NC}"
                 fi
@@ -2500,7 +2536,7 @@ DEFAULT_AUDIO_LANGUAGE=$(get_ini_setting "default_audio_language")
 
 # Check for updates on startup (if enabled)
 if [ "$ENABLE_UPDATE_CHECK" = "true" ]; then
-    check_for_updates "$SCRIPT_VERSION"
+    check_for_updates "$SCRIPT_VERSION" "true"  # Pass true to enable auto-download
 else
     echo -e "${BLUE}ℹ Version: $SCRIPT_VERSION (update check disabled)${NC}"
 fi
