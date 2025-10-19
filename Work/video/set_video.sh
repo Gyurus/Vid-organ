@@ -2220,7 +2220,7 @@ check_for_updates() {
 }
 
 # Display version and startup message
-SCRIPT_VERSION="0.6.2"
+SCRIPT_VERSION="0.6.4"
 echo -e "${GREEN}╔══════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║${NC}  Video Audio Language Setter - v${SCRIPT_VERSION}${NC}${GREEN}         ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════╝${NC}"
