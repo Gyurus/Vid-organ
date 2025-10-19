@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Video Audio Language Setter and Organizer
-# Version: 0.6.2.1
+# Version: 0.6.3
 # Script to check video files for missing audio language metadata
 # and set it interactively
 
@@ -25,7 +25,7 @@ declare -A INI_SETTINGS=(
     [default_folder]=""
     [small_folder_size_mb]="5"
     [large_file_size_gb]="1"
-    [removable_files]="www.yts.mx|sample.*|*.nfo|*.sfv"
+    [removable_files]="www.yts.mx|sample.*|*.sfv"
     [subtitle_extensions]="srt|sub|ass|ssa|vtt|smi"
     [removed_folder_name]="Aa.removed"
 )
@@ -2145,7 +2145,7 @@ check_for_updates() {
     local current_version="$1"
     local github_repo="Gyurus/Vid-organ"
     local github_branch="main"
-    local script_filename="set_video.sh"
+    local script_filename="Work/video/set_video.sh"
     local temp_remote_script="/tmp/set_video_remote.sh.$$"
     
     # Check if curl is available
@@ -2199,7 +2199,7 @@ check_for_updates() {
                 
                 if [ "$is_newer" = true ]; then
                     echo -e "${YELLOW}⚠ Update available! Remote: v$remote_version (current: v$current_version)${NC}"
-                    echo -e "${BLUE}  Download: https://github.com/${github_repo}/releases${NC}"
+                    echo -e "${BLUE}  GitHub: https://github.com/${github_repo}${NC}"
                 else
                     echo -e "${GREEN}✓ Version is current (v${current_version})${NC}"
                 fi
