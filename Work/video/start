@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# Vid-organ Startup Script
+# Easy launcher for the video organizer
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MAIN_SCRIPT="$SCRIPT_DIR/set_video.sh"
+
+# Check if main script exists
+if [ ! -f "$MAIN_SCRIPT" ]; then
+    echo "❌ Error: set_video.sh not found in $SCRIPT_DIR"
+    exit 1
+fi
+
+# Check if script is executable
+if [ ! -x "$MAIN_SCRIPT" ]; then
+    echo "⚠️  Making set_video.sh executable..."
+    chmod +x "$MAIN_SCRIPT"
+fi
+
+# Parse arguments
+case "${1:-}" in
+    -h|--help)
+        echo "Vid-organ - Video File Organizer"
+        echo ""
+        echo "Usage: $(basename "$0") [OPTIONS] [FOLDER]"
+        echo ""
+        echo "Options:"
+        echo "  -h, --help       Show this help message"
+        echo "  --norename       Skip file organization/renaming"
+        echo "  --nosample       Skip sample file removal"
+        echo "  [FOLDER]         Specify video folder directly"
+        echo ""
+        echo "Examples:"
+        echo "  $(basename "$0")                    # Interactive mode"
+        echo "  $(basename "$0") /path/to/videos   # Process specific folder"
+        echo "  $(basename "$0") --norename        # Only set audio language"
+        exit 0
+        ;;
+    *)
+        # Pass all arguments to main script
+        "$MAIN_SCRIPT" "$@"
+        exit $?
+        ;;
+esac
