@@ -1195,18 +1195,20 @@ move_subtitles_with_movie() {
 # Function to rename/move file into its own directory
 rename_with_languages() {
     local file="$1"
+    local root_dir="${2:-.}"  # Root directory where folders should be created (defaults to current dir)
     local parent_dir=$(dirname "$file")
     local filename=$(basename "$file")
     local extension="${filename##*.}"
     
     # Generate new directory name (Title_(Year) format)
     local new_dir_name=$(generate_directory_name "$file")
-    local new_dir_path="${parent_dir}/${new_dir_name}"
+    # Create folder at the ROOT level, not in the current parent directory
+    local new_dir_path="${root_dir}/${new_dir_name}"
     local new_file_path="${new_dir_path}/${new_dir_name}.${extension}"
     
-    # Verify parent directory exists and is valid
-    if [ ! -d "$parent_dir" ]; then
-        echo -e "${RED}✗ Parent directory does not exist: $parent_dir${NC}"
+    # Verify root directory exists and is valid
+    if [ ! -d "$root_dir" ]; then
+        echo -e "${RED}✗ Root directory does not exist: $root_dir${NC}"
         return 1
     fi
     
@@ -1219,6 +1221,7 @@ rename_with_languages() {
     
     echo -e "${BLUE}═══ File Organization ═══${NC}"
     echo -e "${BLUE}Current location: $parent_dir${NC}"
+    echo -e "${BLUE}Root folder: $root_dir${NC}"
     echo -e "${BLUE}New subfolder: $new_dir_name${NC}"
     echo -e "${BLUE}Proposed organization:${NC}"
     echo -e "  From: $file"
@@ -1237,12 +1240,12 @@ rename_with_languages() {
         # Create new directory if it doesn't exist
         if [ ! -d "$new_dir_path" ]; then
             if mkdir -p "$new_dir_path" 2>/dev/null; then
-                echo -e "${GREEN}✓ Created directory in: $parent_dir${NC}"
+                echo -e "${GREEN}✓ Created directory in: $root_dir${NC}"
                 echo -e "${GREEN}  New folder: $new_dir_name${NC}"
             else
                 echo -e "${RED}✗ Failed to create directory: $new_dir_path${NC}"
                 echo -e "${YELLOW}Possible causes: Permission denied, invalid path, or disk full${NC}"
-                echo -e "${YELLOW}Target location was: $parent_dir${NC}"
+                echo -e "${YELLOW}Target location was: $root_dir${NC}"
                 return 1
             fi
         fi
@@ -1279,7 +1282,7 @@ rename_with_languages() {
                     # If directory is empty (no files or subdirs), move to removed folder
                     if [ "$file_count" -eq 0 ] && [ "$dir_count" -eq 0 ]; then
                         echo -e "${BLUE}Old directory is empty, moving to removed folder...${NC}"
-                        if move_to_removed "$old_dir" "$new_dir_path"; then
+                        if move_to_removed "$old_dir" "$root_dir"; then
                             echo -e "${GREEN}✓ Old directory moved to: ${REMOVED_FOLDER}${NC}"
                         else
                             echo -e "${YELLOW}⚠ Could not move old directory${NC}"
@@ -1987,14 +1990,13 @@ main() {
         # Offer to rename/move file into its own directory (for all video files)
         if [ "$ENABLE_RENAME" = true ] && [ -f "$file" ]; then
             echo
-            if rename_with_languages "$file"; then
+            if rename_with_languages "$file" "$search_dir"; then
                 ((renamed_count++))
                 status="${status}_organized"
                 # Update file reference for tracking
                 local new_dir_name=$(generate_directory_name "$file")
-                local parent_dir=$(dirname "$file")
                 local extension="${filename##*.}"
-                file="${parent_dir}/${new_dir_name}/${new_dir_name}.${extension}"
+                file="${search_dir}/${new_dir_name}/${new_dir_name}.${extension}"
                 filename="${new_dir_name}.${extension}"
             fi
         fi
