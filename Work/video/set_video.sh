@@ -1861,6 +1861,11 @@ main() {
     declare -a file_details_status=()
     declare -a file_details_language=()
     
+    # Arrays to track small video files (< 400 MB)
+    declare -a small_video_files=()
+    declare -a small_video_sizes=()
+    local small_file_threshold=$((400 * 1048576))  # 400 MB in bytes
+    
     # Folder was already selected in the main script initialization
     # (moved before main() call for immediate visual feedback)
     
@@ -1940,10 +1945,32 @@ main() {
                 print_status "Removed as sample" "done"
                 continue  # Skip further processing if file was removed
             else
-                # Sample file kept
+                # Sample file kept - skip audio language processing
                 status="sample_kept"
-                print_status "Sample file kept" "warn"
+                print_status "Sample file kept (skipping audio processing)" "warn"
+                current_lang="N/A"
+                # Add to tracking and skip to renaming
+                file_details_name+=("$filename")
+                file_details_size+=("$filesize")
+                file_details_status+=("$status")
+                file_details_language+=("$current_lang")
+                # Check for rename only
+                if [ "$ENABLE_RENAME" = true ] && [ -f "$file" ]; then
+                    echo
+                    if rename_with_languages "$file" "$search_dir"; then
+                        ((renamed_count++))
+                        status="${status}_organized"
+                    fi
+                fi
+                continue  # Skip language processing for kept samples
             fi
+        fi
+        
+        # Track small video files (< 400 MB)
+        local file_bytes=$(stat -c%s "$file" 2>/dev/null)
+        if [ -n "$file_bytes" ] && [ "$file_bytes" -lt "$small_file_threshold" ]; then
+            small_video_files+=("$filename")
+            small_video_sizes+=("$filesize")
         fi
         
         # Get current language if file exists
@@ -2036,6 +2063,20 @@ main() {
     
     # Print detailed summary
     print_detailed_summary file_details_name file_details_size file_details_status file_details_language
+    
+    # Show warning for small video files (< 400 MB)
+    if [ ${#small_video_files[@]} -gt 0 ]; then
+        echo
+        echo -e "${YELLOW}═══════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}⚠ WARNING: Found ${#small_video_files[@]} small video file(s) (< 400 MB):${NC}"
+        echo -e "${YELLOW}═══════════════════════════════════════════════════${NC}"
+        for i in "${!small_video_files[@]}"; do
+            echo -e "${YELLOW}  • ${small_video_files[$i]}  (${small_video_sizes[$i]})${NC}"
+        done
+        echo -e "${YELLOW}These might be sample files, trailers, or incomplete downloads.${NC}"
+        echo -e "${YELLOW}═══════════════════════════════════════════════════${NC}"
+        echo
+    fi
     
     if [ $file_count -eq 0 ]; then
         echo -e "${YELLOW}No video files found in the specified directory.${NC}"
