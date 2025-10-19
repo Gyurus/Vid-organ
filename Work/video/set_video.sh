@@ -2220,7 +2220,11 @@ check_for_updates() {
 }
 
 # Display version and startup message
-SCRIPT_VERSION="0.6.4"
+# Extract version dynamically from script header
+SCRIPT_VERSION=$(grep "^# Version:" "$0" 2>/dev/null | head -1 | sed 's/.*Version: //' | xargs)
+# Fallback to default if extraction fails
+SCRIPT_VERSION="${SCRIPT_VERSION:-0.6.4}"
+
 echo -e "${GREEN}╔══════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║${NC}  Video Audio Language Setter - v${SCRIPT_VERSION}${NC}${GREEN}         ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════╝${NC}"
