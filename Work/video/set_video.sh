@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Video Audio Language Setter and Organizer
-# Version: 0.6.8
+# Version: 0.6.8.1
 # Script to check video files for missing audio language metadata
 # and set it interactively
 # Removed items folder
@@ -1246,9 +1246,10 @@ generate_filename_with_audio() {
     echo "$new_filename"
 }
 
-# Function to handle subtitle files - searches original folder recursively and copies to new folder
+# Function to handle subtitle files - searches specified folder for subtitles matching the movie
 move_subtitles_with_movie() {
     local movie_file="$1"
+    local search_dir="${2:-.}"  # Optional: search directory (defaults to current dir if not provided)
     local movie_dir=$(dirname "$movie_file")
     local movie_name="${movie_file%.*}"
     local movie_basename=$(basename "$movie_name")
@@ -1261,14 +1262,13 @@ move_subtitles_with_movie() {
     
     echo -e "${BLUE}═══ Subtitle Handling ═══${NC}"
     
-    # Search for subtitle files recursively in the original parent directory
-    local original_parent=$(dirname "$movie_dir")
-    if [ ! -d "$original_parent" ]; then
-        echo -e "${YELLOW}ℹ Original parent folder not accessible${NC}"
+    # Search for subtitle files only in the specified search directory (not recursively in parent)
+    if [ ! -d "$search_dir" ]; then
+        echo -e "${YELLOW}ℹ Search directory not accessible: $search_dir${NC}"
         return 0
     fi
     
-    # Search for subtitle files recursively
+    # Search for subtitle files only in the immediate search directory
     for ext in "${subtitle_extensions[@]}"; do
         while IFS= read -r -d '' sub_file; do
             if [ -f "$sub_file" ]; then
@@ -1308,13 +1308,13 @@ move_subtitles_with_movie() {
                     subs_found=$((subs_found + 1))
                 fi
             fi
-        done < <(find "$original_parent" -type f -name "*.$ext" -print0 2>/dev/null)
+        done < <(find "$search_dir" -maxdepth 1 -type f -name "*.$ext" -print0 2>/dev/null)
     done
     
     if [ $subs_found -gt 0 ]; then
         echo -e "${GREEN}✓ Subtitle handling complete ($subs_copied copied)${NC}"
     else
-        echo -e "${YELLOW}ℹ No subtitle files found${NC}"
+        echo -e "${YELLOW}ℹ No subtitle files found in: $search_dir${NC}"
     fi
     
     return 0
@@ -1400,11 +1400,13 @@ rename_with_languages() {
                 echo -e "${GREEN}✓ Successfully organized file${NC}"
                 echo -e "${GREEN}  Location: $new_dir_path${NC}"
                 
-                # Handle subtitle files
-                move_subtitles_with_movie "$new_file_path"
+                # Save old directory before subtitle processing
+                local old_dir=$(dirname "$file")
+                
+                # Handle subtitle files - search only in the original directory where movie was located
+                move_subtitles_with_movie "$new_file_path" "$old_dir"
                 
                 # Check old directory and move it to Aa.removed if empty
-                local old_dir=$(dirname "$file")
                 
                 if [ "$old_dir" != "$new_dir_path" ] && [ -d "$old_dir" ]; then
                     local file_count=$(find "$old_dir" -mindepth 1 -maxdepth 1 -type f 2>/dev/null | wc -l)
