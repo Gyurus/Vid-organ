@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Video Audio Language Setter and Organizer
-# Version: 0.6.9
+# Version: 0.6.91
 # Script to check video files for missing audio language metadata
 # and set it interactively
 # Removed items folder
@@ -1353,42 +1353,13 @@ rename_with_languages() {
                 # Save old directory for cleanup
                 local old_dir=$(dirname "$file")
                 
-                # Check old directory and move it to Aa.removed if empty
-                
+                # Always move old directory to removed folder if it's different from the new directory
                 if [ "$old_dir" != "$new_dir_path" ] && [ -d "$old_dir" ]; then
-                    local file_count=$(find "$old_dir" -mindepth 1 -maxdepth 1 -type f 2>/dev/null | wc -l)
-                    local dir_count=$(find "$old_dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-                    
-                    # If directory is empty (no files or subdirs), move to removed folder
-                    if [ "$file_count" -eq 0 ] && [ "$dir_count" -eq 0 ]; then
-                        echo -e "${BLUE}Old directory is empty, moving to removed folder...${NC}"
-                        if move_to_removed "$old_dir" "$root_dir"; then
-                            echo -e "${GREEN}✓ Old directory moved to: ${REMOVED_FOLDER}${NC}"
-                        else
-                            echo -e "${YELLOW}⚠ Could not move old directory${NC}"
-                        fi
-                    elif [ "$file_count" -eq 0 ] && [ "$dir_count" -gt 0 ]; then
-                        # Only empty subdirectories exist
-                        local all_empty=true
-                        while IFS= read -r -d '' subdir; do
-                            if [ "$(find "$subdir" -type f 2>/dev/null | wc -l)" -gt 0 ]; then
-                                all_empty=false
-                                break
-                            fi
-                        done < <(find "$old_dir" -mindepth 1 -maxdepth 1 -type d -print0)
-                        
-                        if [ "$all_empty" = true ]; then
-                            echo -e "${BLUE}Old directory (with empty subdirs) moving to removed folder...${NC}"
-                            if move_to_removed "$old_dir" "$new_dir_path"; then
-                                echo -e "${GREEN}✓ Old directory moved to: ${REMOVED_FOLDER}${NC}"
-                            else
-                                echo -e "${YELLOW}⚠ Could not move old directory${NC}"
-                            fi
-                        else
-                            echo -e "${YELLOW}⚠ Old directory contains files in subdirectories - not removing${NC}"
-                        fi
+                    echo -e "${BLUE}Moving old directory to removed folder...${NC}"
+                    if move_to_removed "$old_dir" "$root_dir"; then
+                        echo -e "${GREEN}✓ Old directory moved to: ${REMOVED_FOLDER}${NC}"
                     else
-                        echo -e "${YELLOW}⚠ Old directory still contains files - not removing${NC}"
+                        echo -e "${YELLOW}⚠ Could not move old directory to removed folder${NC}"
                     fi
                 fi
                 return 0
