@@ -25,6 +25,7 @@ declare -A INI_SETTINGS=(
     [auto_organize]="true"
     [default_folder]=""
     [small_folder_size_mb]="5"
+    [small_video_file_size_mb]="400"
     [large_file_size_gb]="1"
     [removable_files]="www.yts.mx|sample.*|*.sfv"
     [subtitle_extensions]="srt|sub|ass|ssa|vtt|smi"
@@ -363,6 +364,26 @@ move_to_removed() {
     # Validate inputs
     if [ -z "$item" ] || [ -z "$movie_folder" ]; then
         echo -e "${RED}✗ Error: move_to_removed - Invalid arguments${NC}"
+        return 1
+    fi
+    
+    # CRITICAL SAFETY CHECK: Prevent removing the script itself
+    local script_path="$0"
+    local script_realpath=$(cd "$(dirname "$script_path")" && pwd)/$(basename "$script_path")
+    local item_realpath=$(cd "$(dirname "$item")" && pwd)/$(basename "$item") 2>/dev/null
+    
+    if [ "$item_realpath" = "$script_realpath" ]; then
+        echo -e "${RED}✗ CRITICAL: Attempted to remove the script itself! Aborting.${NC}"
+        echo -e "${YELLOW}Item: $item${NC}"
+        echo -e "${YELLOW}Script: $script_path${NC}"
+        return 1
+    fi
+    
+    # CRITICAL SAFETY CHECK: Prevent removing the INI configuration file
+    if [ "$item_realpath" = "$(cd "$(dirname "$INI_CONFIG_FILE")" && pwd)/$(basename "$INI_CONFIG_FILE")" ] 2>/dev/null; then
+        echo -e "${RED}✗ CRITICAL: Attempted to remove the INI configuration file! Aborting.${NC}"
+        echo -e "${YELLOW}Item: $item${NC}"
+        echo -e "${YELLOW}INI File: $INI_CONFIG_FILE${NC}"
         return 1
     fi
     
@@ -1246,79 +1267,6 @@ generate_filename_with_audio() {
     echo "$new_filename"
 }
 
-# Function to handle subtitle files - searches specified folder for subtitles matching the movie
-move_subtitles_with_movie() {
-    local movie_file="$1"
-    local search_dir="${2:-.}"  # Optional: search directory (defaults to current dir if not provided)
-    local movie_dir=$(dirname "$movie_file")
-    local movie_name="${movie_file%.*}"
-    local movie_basename=$(basename "$movie_name")
-    
-    # Get subtitle extensions from INI
-    local subtitle_exts_str=$(get_ini_setting "subtitle_extensions")
-    IFS='|' read -ra subtitle_extensions <<< "$subtitle_exts_str"
-    local subs_found=0
-    local subs_copied=0
-    
-    echo -e "${BLUE}═══ Subtitle Handling ═══${NC}"
-    
-    # Search for subtitle files only in the specified search directory (not recursively in parent)
-    if [ ! -d "$search_dir" ]; then
-        echo -e "${YELLOW}ℹ Search directory not accessible: $search_dir${NC}"
-        return 0
-    fi
-    
-    # Search for subtitle files only in the immediate search directory
-    for ext in "${subtitle_extensions[@]}"; do
-        while IFS= read -r -d '' sub_file; do
-            if [ -f "$sub_file" ]; then
-                local sub_basename=$(basename "$sub_file")
-                local sub_name="${sub_basename%.*}"
-                local sub_ext="${sub_basename##*.}"
-                
-                # Skip if it's the movie file itself
-                if [ "$sub_file" = "$movie_file" ]; then
-                    continue
-                fi
-                
-                # Try to extract language code (2-3 lowercase letters)
-                local language=""
-                if [[ "$sub_name" =~ ([a-z]{2,3})$ ]]; then
-                    language="${BASH_REMATCH[1]}"
-                    # Rename with detected language: moviename.language.ext
-                    local new_sub_name="${movie_basename}.${language}.${sub_ext}"
-                else
-                    # No language detected, use original name: moviename.filename.ext
-                    local new_sub_name="${movie_basename}.${sub_name}.${sub_ext}"
-                fi
-                
-                local new_sub_path="${movie_dir}/${new_sub_name}"
-                
-                # Copy subtitle file to new movie folder
-                if cp "$sub_file" "$new_sub_path" 2>/dev/null; then
-                    if [ -n "$language" ]; then
-                        echo -e "${GREEN}✓ Copied subtitle: $sub_basename → $new_sub_name (lang: $language)${NC}"
-                    else
-                        echo -e "${GREEN}✓ Copied subtitle: $sub_basename → $new_sub_name${NC}"
-                    fi
-                    subs_copied=$((subs_copied + 1))
-                    subs_found=$((subs_found + 1))
-                else
-                    echo -e "${YELLOW}⚠ Failed to copy subtitle: $sub_basename${NC}"
-                    subs_found=$((subs_found + 1))
-                fi
-            fi
-        done < <(find "$search_dir" -maxdepth 1 -type f -name "*.$ext" -print0 2>/dev/null)
-    done
-    
-    if [ $subs_found -gt 0 ]; then
-        echo -e "${GREEN}✓ Subtitle handling complete ($subs_copied copied)${NC}"
-    else
-        echo -e "${YELLOW}ℹ No subtitle files found in: $search_dir${NC}"
-    fi
-    
-    return 0
-}
 
 # Function to rename/move file into its own directory
 rename_with_languages() {
@@ -1400,11 +1348,8 @@ rename_with_languages() {
                 echo -e "${GREEN}✓ Successfully organized file${NC}"
                 echo -e "${GREEN}  Location: $new_dir_path${NC}"
                 
-                # Save old directory before subtitle processing
+                # Save old directory for cleanup
                 local old_dir=$(dirname "$file")
-                
-                # Handle subtitle files - search only in the original directory where movie was located
-                move_subtitles_with_movie "$new_file_path" "$old_dir"
                 
                 # Check old directory and move it to Aa.removed if empty
                 
@@ -2043,10 +1988,11 @@ main() {
     declare -a file_details_status=()
     declare -a file_details_language=()
     
-    # Arrays to track small video files (< 400 MB)
+    # Arrays to track small video files (< threshold from INI)
     declare -a small_video_files=()
     declare -a small_video_sizes=()
-    local small_file_threshold=$((400 * 1048576))  # 400 MB in bytes
+    local small_video_threshold_mb=$(get_ini_setting "small_video_file_size_mb")
+    local small_file_threshold=$((small_video_threshold_mb * 1048576))  # Convert MB to bytes
     
     # Folder was already selected in the main script initialization
     # (moved before main() call for immediate visual feedback)
@@ -2264,11 +2210,11 @@ main() {
     # Print detailed summary
     print_detailed_summary file_details_name file_details_size file_details_status file_details_language
     
-    # Show warning for small video files (< 400 MB)
+    # Show warning for small video files
     if [ ${#small_video_files[@]} -gt 0 ]; then
         echo
         echo -e "${YELLOW}═══════════════════════════════════════════════════${NC}"
-        echo -e "${YELLOW}⚠ WARNING: Found ${#small_video_files[@]} small video file(s) (< 400 MB):${NC}"
+        echo -e "${YELLOW}⚠ WARNING: Found ${#small_video_files[@]} small video file(s) (< ${small_video_threshold_mb} MB):${NC}"
         echo -e "${YELLOW}═══════════════════════════════════════════════════${NC}"
         for i in "${!small_video_files[@]}"; do
             echo -e "${YELLOW}  • ${small_video_files[$i]}  (${small_video_sizes[$i]})${NC}"
