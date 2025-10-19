@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Video Audio Language Setter and Organizer
-# Version: 0.6.7
+# Version: 0.6.8
 # Script to check video files for missing audio language metadata
 # and set it interactively
 # Removed items folder
@@ -43,6 +43,31 @@ validate_ini_version() {
             save_ini_config
             return 0
         fi
+        return 0
+    fi
+    return 1
+}
+
+# Function to auto-update INI with missing settings from defaults
+auto_update_ini_settings() {
+    local needs_update=false
+    local added_keys=()
+    
+    # Check for missing keys in INI that exist in defaults
+    for key in "${!INI_SETTINGS[@]}"; do
+        # If key not in loaded config, it needs to be added
+        if ! grep -q "^${key}=" "$INI_CONFIG_FILE" 2>/dev/null; then
+            needs_update=true
+            added_keys+=("$key")
+        fi
+    done
+    
+    if [ "$needs_update" = true ]; then
+        echo -e "${YELLOW}⚠ INI file is missing settings, auto-updating...${NC}" >&2
+        for key in "${added_keys[@]}"; do
+            echo -e "${BLUE}  + Adding: $key=${INI_SETTINGS[$key]}${NC}" >&2
+        done
+        save_ini_config
         return 0
     fi
     return 1
@@ -977,6 +1002,17 @@ check_audio_language() {
     fi
 }
 
+# Function to check if file has any audio streams at all
+has_audio_streams() {
+    local file="$1"
+    local audio_count=$(ffprobe -v quiet -select_streams a -show_entries stream_index -of csv=p=0 "$file" 2>/dev/null | wc -l)
+    
+    if [ "$audio_count" -gt 0 ]; then
+        return 0  # Has audio
+    fi
+    return 1  # No audio
+}
+
 # Function to check if ANY audio track is missing language metadata
 has_undefined_audio_track() {
     local file="$1"
@@ -1881,6 +1917,13 @@ process_video_file() {
     
     echo -e "\n${BLUE}Processing: $file${NC}"
     
+    # Check if file has any audio streams before proceeding
+    if ! has_audio_streams "$file"; then
+        echo -e "${YELLOW}⚠ No audio streams found in this file${NC}"
+        echo -e "${GREEN}✓ Skipping audio language processing (no audio)${NC}"
+        return 0
+    fi
+    
     # First check if ANY audio track is undefined
     if has_undefined_audio_track "$file"; then
         echo -e "${YELLOW}⚠ Some audio tracks don't have language metadata${NC}"
@@ -2472,6 +2515,9 @@ fi
 
 # Validate INI file version and recreate if missing
 validate_ini_version
+
+# Auto-update INI with any missing settings from current defaults
+auto_update_ini_settings
 
 # Apply INI settings to variables
 ENABLE_SAMPLE_REMOVAL=$(get_ini_setting "enable_sample_removal")
