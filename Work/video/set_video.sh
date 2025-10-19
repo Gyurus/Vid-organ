@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Video Audio Language Setter and Organizer
-# Version: 0.6.8.1
+# Version: 0.6.9
 # Script to check video files for missing audio language metadata
 # and set it interactively
 # Removed items folder
@@ -156,12 +156,14 @@ display_ini_file() {
 ENABLE_RENAME=true
 ENABLE_SAMPLE_REMOVAL=true
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Colors for output - Modern color scheme
+RED='\033[38;5;196m'        # Bright red for errors
+GREEN='\033[38;5;46m'       # Bright green for success
+YELLOW='\033[38;5;226m'     # Bright yellow for warnings
+BLUE='\033[38;5;51m'        # Cyan for info
+PURPLE='\033[38;5;135m'     # Purple for highlights
+GRAY='\033[38;5;243m'       # Gray for secondary info
+NC='\033[0m'                # No Color
 
 # Global variables for batch processing
 BATCH_MODE=""  # Can be: "yes_all", "no_all", or ""
@@ -170,9 +172,9 @@ BATCH_MODE=""  # Can be: "yes_all", "no_all", or ""
 print_section() {
     local title="$1"
     echo
-    echo -e "${BLUE}========================================${NC}"
-    echo -e "${GREEN}$title${NC}"
-    echo -e "${BLUE}========================================${NC}"
+    echo -e "${PURPLE}───────────────────────────────────────────${NC}"
+    echo -e "${BLUE}▶ ${GREEN}$title${NC}"
+    echo -e "${PURPLE}───────────────────────────────────────────${NC}"
 }
 
 # Function to print completion status
@@ -182,19 +184,19 @@ print_status() {
     
     case "$status" in
         done)
-            echo -e "${GREEN}✓${NC} $message"
+            echo -e "${GREEN}✔ $message${NC}"
             ;;
         info)
-            echo -e "${BLUE}ℹ${NC} $message"
+            echo -e "${BLUE}ℹ $message${NC}"
             ;;
         warn)
-            echo -e "${YELLOW}⚠${NC} $message"
+            echo -e "${YELLOW}⚠ $message${NC}"
             ;;
         error)
-            echo -e "${RED}✗${NC} $message"
+            echo -e "${RED}✘ $message${NC}"
             ;;
         *)
-            echo -e "• $message"
+            echo -e "${GRAY}• $message${NC}"
             ;;
     esac
 }
@@ -1213,12 +1215,12 @@ generate_directory_name() {
     local movie_name=$(echo "$movie_info" | cut -d'|' -f1)
     local year=$(echo "$movie_info" | cut -d'|' -f2)
     
-    # Build new directory name: Title_(Year) format
+    # Build new directory name: Title.Year format (no parentheses)
     local new_dir_name=""
     if [ -n "$year" ]; then
         # Convert movie name spaces to underscores and add year
         local movie_name_clean=$(echo "$movie_name" | sed 's/ /_/g')
-        new_dir_name="${movie_name_clean}_(${year})"
+        new_dir_name="${movie_name_clean}.${year}"
         echo -e "${GREEN}✓ Generated directory: $new_dir_name${NC}" >&2
     else
         # No year found, just use movie name
@@ -1248,19 +1250,19 @@ generate_filename_with_audio() {
     # Count audio tracks
     local audio_count=$(echo "$audio_langs" | tr '_' '\n' | wc -l)
     
-    # Build filename
+    # Build filename: title.year.lang1.lang2.extension
     local new_filename=""
     local movie_name_clean=$(echo "$movie_name" | sed 's/ /_/g')
     
     if [ -n "$year" ]; then
-        new_filename="${movie_name_clean}_(${year})"
+        new_filename="${movie_name_clean}.${year}"
     else
         new_filename="${movie_name_clean}"
     fi
     
     # Add audio languages if multiple tracks exist
     if [ "$audio_count" -gt 1 ] && [ -n "$audio_langs" ]; then
-        new_filename="${new_filename}_${audio_langs}"
+        new_filename="${new_filename}.${audio_langs}"
     fi
     
     new_filename="${new_filename}.${extension}"
@@ -2389,43 +2391,95 @@ check_for_updates() {
                 if [ "$is_newer" = true ]; then
                     echo -e "${YELLOW}⚠ Update available! Remote: v$remote_version (current: v$current_version)${NC}"
                     echo -e "${BLUE}  GitHub: https://github.com/${github_repo}${NC}"
+                    echo
+                    echo -e "${BLUE}Update options:${NC}"
+                    echo -e "  ${GREEN}y${NC} - Update now"
+                    echo -e "  ${GREEN}n${NC} - Skip for now"
+                    echo -e "  ${GREEN}a${NC} - Auto-update on every startup (saves to INI)"
+                    echo -e "  ${GREEN}e${NC} - Exit without updating"
+                    echo -n "Choose an option (y/n/a/e): "
+                    read -r update_choice </dev/tty
                     
-                    # Ask user if they want to update right now
-                    local update_now=$(get_user_choice "Do you want to update the script now?" "y" "false")
-                    
-                    if [[ "$update_now" = "y" ]]; then
-                        echo -e "${BLUE}Downloading update...${NC}"
-                        # Download the new script to a temp location
-                        local update_temp="/tmp/set_video_update.sh.$$"
-                        if timeout 15 curl -L -f -s -m 12 \
-                            -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36" \
-                            --compressed \
-                            "$github_raw_url" \
-                            -o "$update_temp" 2>/dev/null; then
-                            
-                            # Verify the downloaded file
-                            if [ -s "$update_temp" ] && head -1 "$update_temp" 2>/dev/null | grep -q "^#!/bin/bash"; then
-                                # Make it executable and replace current script
-                                chmod +x "$update_temp"
-                                local script_path="$0"
-                                if cp "$update_temp" "$script_path"; then
-                                    echo -e "${GREEN}✓ Update successful! (v$remote_version)${NC}"
-                                    echo -e "${YELLOW}⚠ Please restart the script to use the updated version${NC}"
-                                    rm -f "$update_temp"
-                                    sleep 2
-                                    exit 0
+                    case "$update_choice" in
+                        y|Y)
+                            echo -e "${BLUE}Downloading update...${NC}"
+                            # Download the new script to a temp location
+                            local update_temp="/tmp/set_video_update.sh.$$"
+                            if timeout 15 curl -L -f -s -m 12 \
+                                -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36" \
+                                --compressed \
+                                "$github_raw_url" \
+                                -o "$update_temp" 2>/dev/null; then
+                                
+                                # Verify the downloaded file
+                                if [ -s "$update_temp" ] && head -1 "$update_temp" 2>/dev/null | grep -q "^#!/bin/bash"; then
+                                    # Make it executable and replace current script
+                                    chmod +x "$update_temp"
+                                    local script_path="$0"
+                                    if cp "$update_temp" "$script_path"; then
+                                        echo -e "${GREEN}✓ Update successful! (v$remote_version)${NC}"
+                                        echo -e "${YELLOW}⚠ Please restart the script to use the updated version${NC}"
+                                        rm -f "$update_temp"
+                                        sleep 2
+                                        exit 0
+                                    else
+                                        echo -e "${RED}✗ Failed to write update to script location${NC}"
+                                        rm -f "$update_temp"
+                                    fi
                                 else
-                                    echo -e "${RED}✗ Failed to write update to script location${NC}"
+                                    echo -e "${RED}✗ Downloaded file validation failed${NC}"
                                     rm -f "$update_temp"
                                 fi
                             else
-                                echo -e "${RED}✗ Downloaded file validation failed${NC}"
-                                rm -f "$update_temp"
+                                echo -e "${RED}✗ Failed to download update${NC}"
                             fi
-                        else
-                            echo -e "${RED}✗ Failed to download update${NC}"
-                        fi
-                    fi
+                            ;;
+                        n|N)
+                            echo -e "${YELLOW}⚠ Update skipped${NC}"
+                            ;;
+                        a|A)
+                            echo -e "${BLUE}✓ Auto-update enabled and saved to INI${NC}"
+                            set_ini_setting "enable_update_check" "true"
+                            echo -e "${BLUE}Downloading update...${NC}"
+                            # Download the new script to a temp location
+                            local update_temp="/tmp/set_video_update.sh.$$"
+                            if timeout 15 curl -L -f -s -m 12 \
+                                -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36" \
+                                --compressed \
+                                "$github_raw_url" \
+                                -o "$update_temp" 2>/dev/null; then
+                                
+                                # Verify the downloaded file
+                                if [ -s "$update_temp" ] && head -1 "$update_temp" 2>/dev/null | grep -q "^#!/bin/bash"; then
+                                    # Make it executable and replace current script
+                                    chmod +x "$update_temp"
+                                    local script_path="$0"
+                                    if cp "$update_temp" "$script_path"; then
+                                        echo -e "${GREEN}✓ Update successful! (v$remote_version)${NC}"
+                                        echo -e "${YELLOW}⚠ Please restart the script to use the updated version${NC}"
+                                        rm -f "$update_temp"
+                                        sleep 2
+                                        exit 0
+                                    else
+                                        echo -e "${RED}✗ Failed to write update to script location${NC}"
+                                        rm -f "$update_temp"
+                                    fi
+                                else
+                                    echo -e "${RED}✗ Downloaded file validation failed${NC}"
+                                    rm -f "$update_temp"
+                                fi
+                            else
+                                echo -e "${RED}✗ Failed to download update${NC}"
+                            fi
+                            ;;
+                        e|E)
+                            echo -e "${YELLOW}⚠ Exiting without updating${NC}"
+                            exit 0
+                            ;;
+                        *)
+                            echo -e "${YELLOW}⚠ Invalid option. Update skipped${NC}"
+                            ;;
+                    esac
                 else
                     echo -e "${GREEN}✓ Version is current (v${current_version})${NC}"
                 fi
@@ -2450,13 +2504,13 @@ SCRIPT_VERSION=$(grep "^# Version:" "$0" 2>/dev/null | head -1 | sed 's/.*Versio
 # Fallback to default if extraction fails
 SCRIPT_VERSION="${SCRIPT_VERSION:-0.6.4}"
 
-echo -e "${GREEN}╔══════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║${NC}  Video Audio Language Setter - v${SCRIPT_VERSION}${NC}${GREEN}         ║${NC}"
-echo -e "${GREEN}╚══════════════════════════════════════════════╝${NC}"
+echo -e "${PURPLE}╔═══════════════════════════════════════════════╗${NC}"
+echo -e "${PURPLE}║${NC}  🎬 ${GREEN}Video Audio Language Setter${NC}${PURPLE} │ v${SCRIPT_VERSION}${PURPLE}  ║${NC}"
+echo -e "${PURPLE}╚═══════════════════════════════════════════════╝${NC}"
 echo
 
 # Load INI configuration at startup (before update check)
-echo -e "${BLUE}Loading configuration...${NC}"
+echo -e "${BLUE}⚙ Loading configuration...${NC}"
 if ! load_ini_config; then
     echo -e "${YELLOW}No $INI_CONFIG_FILE found, using defaults${NC}"
 fi
