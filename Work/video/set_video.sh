@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Video Audio Language Setter and Organizer
-# Version: 0.7.0.2
+# Version: 0.7.0.3
 # Script to check video files for missing audio language metadata
 # and set it interactively
 # Removed items folder
@@ -30,6 +30,7 @@ declare -A INI_SETTINGS=(
     [removable_files]="www.yts.mx|sample.*|*.sfv"
     [subtitle_extensions]="srt|sub|ass|ssa|vtt|smi"
     [removed_folder_name]="Aa.removed"
+    [title_clean_patterns]="online film|teljes film|online_teljes_film|webrip|web-rip|webdl|web-dl|brrip|br-rip|720p|1080p|2160p|4k|hd|fhd|uhd|x264|x265|h264|h265|hevc|aac|ac3|dts|dd5.1|truehd|atmos|dvdrip|dvd-rip|hdtv|pdtv|cam|ts|tc|scr|r5|dvdscr|bluray|blu-ray|repack|proper|uncut|extended|directors cut|theatrical|internal|limited|festival|screener|workprint"
 )
 
 # Function to validate INI file version and failsafe
@@ -590,7 +591,7 @@ ensure_single_level_structure() {
             fi
             echo
         fi
-    done < <(find "$search_dir" -mindepth 2 -type f -iregex ".*\.\(avi\|mkv\|mp4\|mov\|wmv\|flv\|webm\|m4v\|mpg\|mpeg\|3gp\|ogv\)$" -print0 2>/dev/null)
+    done < <(find "$search_dir" -mindepth 2 -type f -iregex ".*\.\(avi\|mkv\|mp4\|mov\|wmv\|flv\|webm\|m4v\|mpg\|mpeg\|3gp\|ogv\|ts\|m2ts\|mts\)$" -print0 2>/dev/null)
     
     if [ "$moved_count" -gt 0 ]; then
         echo -e "${GREEN}✓ Moved $moved_count deeply nested video file(s) to main directory${NC}"
@@ -627,7 +628,7 @@ check_file_permissions() {
     local file_count=0
     while IFS= read -r -d '' file; do
         ((file_count++))
-    done < <(find "$search_dir" -type f -iregex ".*\.\(avi\|mkv\|mp4\|mov\|wmv\|flv\|webm\|m4v\|mpg\|mpeg\|3gp\|ogv\)$" -print0 2>/dev/null)
+    done < <(find "$search_dir" -type f -iregex ".*\.\(avi\|mkv\|mp4\|mov\|wmv\|flv\|webm\|m4v\|mpg\|mpeg\|3gp\|ogv\|ts\|m2ts\|mts\)$" -print0 2>/dev/null)
     
     echo -e "${BLUE}Checking permissions ($file_count files)...${NC}"
     
@@ -661,7 +662,7 @@ check_file_permissions() {
             echo -e "${YELLOW}⚠ WARNING: No write permission to file: $file${NC}"
             issues_found=true
         fi
-    done < <(find "$search_dir" -type f -iregex ".*\.\(avi\|mkv\|mp4\|mov\|wmv\|flv\|webm\|m4v\|mpg\|mpeg\|3gp\|ogv\)$" -print0 2>/dev/null)
+    done < <(find "$search_dir" -type f -iregex ".*\.\(avi\|mkv\|mp4\|mov\|wmv\|flv\|webm\|m4v\|mpg\|mpeg\|3gp\|ogv\|ts\|m2ts\|mts\)$" -print0 2>/dev/null)
     
     echo -ne "\r\033[K"  # Clear the progress line
     
@@ -1120,33 +1121,27 @@ clean_movie_name() {
     # Convert to lowercase for pattern matching, but preserve original case for final result
     local lower_name="${name,,}"
     
-    # Define patterns to remove (case insensitive)
-    local patterns=(
-        # Video quality indicators
-        "720p?" "1080p?" "2160p?" "4k" "hd" "fhd" "uhd"
-        # Video formats and codecs
-        "x264" "x265" "h264" "h265" "hevc" "avc" "xvid" "divx"
-        # Audio codecs
-        "aac" "ac3" "dts" "dd5\.?1" "truehd" "atmos"
-        # Release types
-        "webrip" "web-rip" "webdl" "web-dl" "brrip" "br-rip" "bluray" "blu-ray"
-        "dvdrip" "dvd-rip" "hdtv" "pdtv" "cam" "ts" "tc" "scr" "r5" "dvdscr"
-        # Release groups and sources
-        "amzn" "nf" "netflix" "hulu" "hbo" "max" "apple" "disney" "paramount"
-        "yify" "rarbg" "ettv" "eztv" "torrentgalaxy" "1337x"
-        # Other indicators
-        "repack" "proper" "uncut" "extended" "directors?\.?cut" "theatrical"
-        "internal" "limited" "festival" "screener" "workprint"
-        # Years ONLY when NOT in parentheses or brackets (will be handled separately)
-        # This pattern removes standalone years not in () or []
-    )
+    # FIRST: Remove repeated language codes (e.g., _und_und_und -> _und)
+    name=$(echo "$name" | sed -E 's/(_[a-z]{2,3})\1+/\1/g')
     
-    # Remove patterns from the name
+    # SECOND: Remove language codes at the end (e.g., _und, _eng, _kor, _hun)
+    name=$(echo "$name" | sed -E 's/_([a-z]{2,3})$//')
+    
+    # THIRD: Remove patterns from INI configuration
     local cleaned_name="$name"
-    for pattern in "${patterns[@]}"; do
-        # Remove the pattern and any surrounding dots, dashes, or spaces
-        cleaned_name=$(echo "$cleaned_name" | sed -E "s/[._-]*${pattern}[._-]*//gi")
-    done
+    local ini_patterns="${INI_SETTINGS[title_clean_patterns]}"
+    
+    if [ -n "$ini_patterns" ]; then
+        # Convert pipe-separated list to array
+        IFS='|' read -ra pattern_array <<< "$ini_patterns"
+        
+        for pattern in "${pattern_array[@]}"; do
+            # Escape special regex characters in the pattern
+            local escaped_pattern=$(echo "$pattern" | sed 's/[[\.*^$/]/\\&/g')
+            # Remove the pattern and any surrounding dots, dashes, or spaces (case-insensitive)
+            cleaned_name=$(echo "$cleaned_name" | sed -E "s/[._-]*${escaped_pattern}[._-]*//gi")
+        done
+    fi
     
     # Remove standalone years (not in parentheses or brackets) - preserve years in () or []
     # This removes years like "Movie 2025 Quality" but keeps "Movie (2025)" or "Movie [2025]"
@@ -1170,33 +1165,41 @@ extract_movie_info() {
     local movie_name=""
     local year=""
     
-    # FIRST: Try to extract year from format: Title_Year_lang or Title_Year_lang_lang_lang
+    # FIRST: Clean up corrupted filenames with repeated language codes
+    # Remove patterns like "_und_und" -> "_und", "_eng_eng" -> "_eng", etc.
+    local cleaned_filename="${filename}"
+    # Remove repeated language codes (e.g., _und_und_und -> _und)
+    cleaned_filename=$(echo "$cleaned_filename" | sed -E 's/(_[a-z]{2,3})\1+/\1/g')
+    # Remove "online_teljes_film" (Hungarian for "online full movie") and surrounding text
+    cleaned_filename=$(echo "$cleaned_filename" | sed 's/_online_teljes_film//gi')
+    
+    # SECOND: Try to extract year from format: Title_Year_lang or Title_Year_lang_lang_lang
     # Pattern: (title)_(year)(_langs)+ where langs are 2-3 lowercase letters
-    if [[ "$filename" =~ ^(.+?)_([0-9]{4})(_[a-z]{2,3})+$ ]]; then
+    if [[ "$cleaned_filename" =~ ^(.+?)_([0-9]{4})(_[a-z]{2,3})+$ ]]; then
         movie_name="${BASH_REMATCH[1]}"
         year="${BASH_REMATCH[2]}"
         # Convert underscores to spaces in movie name
         movie_name=$(echo "$movie_name" | sed 's/_/ /g')
     else
         # Fall back to cleaning method for non-structured filenames
-        local cleaned_filename=$(clean_movie_name "$filename")
+        local fully_cleaned=$(clean_movie_name "$cleaned_filename")
         
         # Try to extract year in format (YYYY) or [YYYY]
-        if [[ "$cleaned_filename" =~ \(([0-9]{4})\) ]]; then
+        if [[ "$fully_cleaned" =~ \(([0-9]{4})\) ]]; then
             year="${BASH_REMATCH[1]}"
             # Get everything before (YEAR)
-            movie_name=$(echo "$cleaned_filename" | sed -E 's/\([0-9]{4}\).*//' | sed 's/ *$//')
-        elif [[ "$cleaned_filename" =~ \[([0-9]{4})\] ]]; then
+            movie_name=$(echo "$fully_cleaned" | sed -E 's/\([0-9]{4}\).*//' | sed 's/ *$//')
+        elif [[ "$fully_cleaned" =~ \[([0-9]{4})\] ]]; then
             year="${BASH_REMATCH[1]}"
             # Get everything before [YEAR]
-            movie_name=$(echo "$cleaned_filename" | sed -E 's/\[[0-9]{4}\].*//' | sed 's/ *$//')
-        elif [[ "$cleaned_filename" =~ ([0-9]{4}) ]]; then
+            movie_name=$(echo "$fully_cleaned" | sed -E 's/\[[0-9]{4}\].*//' | sed 's/ *$//')
+        elif [[ "$fully_cleaned" =~ ([0-9]{4}) ]]; then
             # Any 4-digit year found in the filename
             year="${BASH_REMATCH[1]}"
-            movie_name=$(echo "$cleaned_filename" | sed -E "s/ *${year}.*$//" | sed 's/ *$//')
+            movie_name=$(echo "$fully_cleaned" | sed -E "s/ *${year}.*$//" | sed 's/ *$//')
         else
             # No year found, use cleaned filename as is
-            movie_name="$cleaned_filename"
+            movie_name="$fully_cleaned"
             year=""
         fi
     fi
@@ -1300,7 +1303,17 @@ generate_directory_name() {
     local movie_name=$(echo "$movie_info" | cut -d'|' -f1)
     local year=$(echo "$movie_info" | cut -d'|' -f2)
     
-    # Try to get year from IMDB if not found in filename
+    # Try to get year from parent folder if not found in filename
+    if [ -z "$year" ] && [ -d "$dir_path" ]; then
+        local parent_name=$(basename "$dir_path")
+        # Check if parent folder has a year at the end (e.g., Folder.2022)
+        if [[ "$parent_name" =~ \.([0-9]{4})$ ]]; then
+            year="${BASH_REMATCH[1]}"
+            echo -e "${BLUE}ℹ Year found in folder name: $year${NC}" >&2
+        fi
+    fi
+    
+    # Try to get year from IMDB if not found in filename or folder
     if [ -z "$year" ]; then
         year=$(get_movie_year "$movie_name" "$year" "true")
     fi
@@ -1328,13 +1341,23 @@ generate_filename_with_audio() {
     local filename=$(basename "$file")
     local extension="${filename##*.}"
     local base_name="${filename%.*}"
+    local dir_path=$(dirname "$file")
     
     # Extract movie info
     local movie_info=$(extract_movie_info "$base_name")
     local movie_name=$(echo "$movie_info" | cut -d'|' -f1)
     local year=$(echo "$movie_info" | cut -d'|' -f2)
     
-    # Try to get year from IMDB if not found in filename
+    # Try to get year from parent folder if not found in filename
+    if [ -z "$year" ] && [ -d "$dir_path" ]; then
+        local parent_name=$(basename "$dir_path")
+        # Check if parent folder has a year at the end (e.g., Folder.2022)
+        if [[ "$parent_name" =~ \.([0-9]{4})$ ]]; then
+            year="${BASH_REMATCH[1]}"
+        fi
+    fi
+    
+    # Try to get year from IMDB if not found in filename or folder
     if [ -z "$year" ]; then
         year=$(get_movie_year "$movie_name" "$year" "true")
     fi
@@ -2277,7 +2300,7 @@ main() {
             file_details_language+=("$current_lang")
         fi
         
-    done < <(find "$search_dir" -type f -iregex ".*\.\(avi\|mkv\|mp4\|mov\|wmv\|flv\|webm\|m4v\|mpg\|mpeg\|3gp\|ogv\)$" -print0)
+    done < <(find "$search_dir" -type f -iregex ".*\.\(avi\|mkv\|mp4\|mov\|wmv\|flv\|webm\|m4v\|mpg\|mpeg\|3gp\|ogv\|ts\|m2ts\|mts\)$" -print0)
     
     # Summary
     echo
