@@ -2140,50 +2140,82 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Function to check if a newer version is available on Google Drive
+# Function to check if a newer version is available on GitHub
 check_for_updates() {
     local current_version="$1"
-    local drive_file_id="1rYi7FF185TE0Sl_qTYMONq5MliGEfWwn"
-    local script_path="$SCRIPT_DIR/set_video.sh"
+    local github_repo="Gyurus/Vid-organ"
+    local github_branch="main"
+    local script_filename="set_video.sh"
     local temp_remote_script="/tmp/set_video_remote.sh.$$"
     
-    # Get current file modification time
-    local local_mtime=$(stat -f%m "$script_path" 2>/dev/null || stat -c%Y "$script_path" 2>/dev/null)
-    
-    if [ -z "$local_mtime" ]; then
+    # Check if curl is available
+    if ! command -v curl &> /dev/null; then
+        echo -e "${BLUE}ℹ Version: $current_version (curl not available)${NC}"
         return 0
     fi
     
-    # Try to download the remote script from Google Drive
-    # Using the export=download parameter to get the actual file
-    local drive_url="https://drive.google.com/uc?export=download&id=${drive_file_id}"
+    local download_success=false
     
-    # Attempt download with timeout
-    if command -v curl &> /dev/null; then
-        if curl -L -f -s -m 5 "$drive_url" -o "$temp_remote_script" 2>/dev/null; then
-            # Extract version from remote script
-            local remote_version=$(grep "^# Version:" "$temp_remote_script" 2>/dev/null | head -1 | sed 's/.*Version: //')
-            
-            if [ -n "$remote_version" ]; then
-                # Compare versions (simple string comparison for X.Y.Z format)
-                if [ "$remote_version" != "$current_version" ]; then
-                    echo -e "${YELLOW}⚠ Update available! Remote version: $remote_version (current: $current_version)${NC}"
-                    echo -e "${BLUE}  Download: https://drive.google.com/file/d/${drive_file_id}${NC}"
+    # Try to download from GitHub raw content
+    local github_raw_url="https://raw.githubusercontent.com/${github_repo}/${github_branch}/${script_filename}"
+    
+    if timeout 15 curl -L -f -s -m 12 \
+        -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36" \
+        --compressed \
+        "$github_raw_url" \
+        -o "$temp_remote_script" 2>/dev/null; then
+        
+        # Validate file size (should be non-empty bash script)
+        if [ -s "$temp_remote_script" ] && head -1 "$temp_remote_script" 2>/dev/null | grep -q "^#!/bin/bash"; then
+            download_success=true
+        fi
+    fi
+    
+    if [ "$download_success" = true ]; then
+        # Extract version from remote script
+        local remote_version=$(grep "^# Version:" "$temp_remote_script" 2>/dev/null | head -1 | sed 's/.*Version: //')
+        
+        if [ -n "$remote_version" ]; then
+            # Compare versions using version comparison
+            if [ "$remote_version" != "$current_version" ]; then
+                # Simple version comparison: split by dots and compare numerically
+                local remote_major=$(echo "$remote_version" | cut -d. -f1)
+                local remote_minor=$(echo "$remote_version" | cut -d. -f2)
+                local remote_patch=$(echo "$remote_version" | cut -d. -f3)
+                
+                local current_major=$(echo "$current_version" | cut -d. -f1)
+                local current_minor=$(echo "$current_version" | cut -d. -f2)
+                local current_patch=$(echo "$current_version" | cut -d. -f3)
+                
+                # Check if remote is newer
+                local is_newer=false
+                if [ "$remote_major" -gt "$current_major" ]; then
+                    is_newer=true
+                elif [ "$remote_major" -eq "$current_major" ] && [ "$remote_minor" -gt "$current_minor" ]; then
+                    is_newer=true
+                elif [ "$remote_major" -eq "$current_major" ] && [ "$remote_minor" -eq "$current_minor" ] && [ "$remote_patch" -gt "$current_patch" ]; then
+                    is_newer=true
+                fi
+                
+                if [ "$is_newer" = true ]; then
+                    echo -e "${YELLOW}⚠ Update available! Remote: v$remote_version (current: v$current_version)${NC}"
+                    echo -e "${BLUE}  Download: https://github.com/${github_repo}/releases${NC}"
                 else
                     echo -e "${GREEN}✓ Version is current (v${current_version})${NC}"
                 fi
             else
-                echo -e "${BLUE}ℹ Version check: Current version is $current_version${NC}"
+                echo -e "${GREEN}✓ Version is current (v${current_version})${NC}"
             fi
-            rm -f "$temp_remote_script"
         else
-            # If download fails, just show local version
-            echo -e "${BLUE}ℹ Version: $current_version (update check unavailable)${NC}"
+            echo -e "${BLUE}ℹ Version: $current_version (remote version info not found)${NC}"
         fi
     else
-        # If curl not available, show local version
-        echo -e "${BLUE}ℹ Version: $current_version (update check requires curl)${NC}"
+        # Download failed - provide helpful message
+        echo -e "${BLUE}ℹ Version: $current_version (remote check unavailable)${NC}"
     fi
+    
+    # Cleanup
+    rm -f "$temp_remote_script" 2>/dev/null
 }
 
 # Display version and startup message
