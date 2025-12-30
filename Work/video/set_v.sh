@@ -1328,6 +1328,144 @@ main() {
     echo "Tip: Check $output_dir for your organized movies"
 }
 
+# Function to install script from GitHub
+install_script() {
+    echo "Installing Video Organizer from GitHub..."
+    
+    # Determine install location
+    local install_dir="$HOME/.local/bin"
+    local script_name="set_v.sh"
+    local install_path="${install_dir}/${script_name}"
+    local config_dir="$HOME/.config/video-organizer"
+    local config_path="${config_dir}/set_v.ini"
+    
+    # Create directories if they don't exist
+    mkdir -p "$install_dir" 2>/dev/null || install_dir="$HOME/bin"
+    mkdir -p "$config_dir" 2>/dev/null || config_dir="$HOME/.config/video-organizer"
+    
+    # Check curl availability
+    if ! command -v curl &> /dev/null; then
+        echo "Error: curl is required for online installation" >&2
+        return 1
+    fi
+    
+    echo "Downloading script from GitHub..."
+    
+    # Download the script
+    local temp_script="${install_dir}/.${script_name}.tmp"
+    if ! curl -sL -o "$temp_script" "${GITHUB_RAW_URL}/${script_name}" 2>/dev/null; then
+        echo "Failed to download script from GitHub" >&2
+        rm -f "$temp_script"
+        return 1
+    fi
+    
+    # Download the config file
+    local temp_config="${config_dir}/.set_v.ini.tmp"
+    if ! curl -sL -o "$temp_config" "${GITHUB_RAW_URL}/set_v.ini" 2>/dev/null; then
+        echo "Warning: Could not download config file, using defaults" >&2
+        rm -f "$temp_config"
+    fi
+    
+    # Verify downloaded script is valid
+    if ! grep -q "SCRIPT_VERSION" "$temp_script"; then
+        echo "Downloaded file is not valid" >&2
+        rm -f "$temp_script" "$temp_config"
+        return 1
+    fi
+    
+    # Install script
+    if mv "$temp_script" "$install_path" && chmod +x "$install_path"; then
+        echo "✓ Script installed to: $install_path"
+    else
+        echo "Failed to install script" >&2
+        rm -f "$temp_script"
+        return 1
+    fi
+    
+    # Install config if downloaded successfully
+    if [ -f "$temp_config" ]; then
+        if mv "$temp_config" "$config_path" && chmod 644 "$config_path"; then
+            echo "✓ Config installed to: $config_path"
+        else
+            echo "Warning: Config installation failed, but script installed" >&2
+        fi
+    fi
+    
+    # Add to PATH if necessary
+    if ! echo "$PATH" | grep -q "$install_dir"; then
+        echo ""
+        echo "To use the script from anywhere, add this to your shell profile:"
+        echo "  export PATH=\"$install_dir:\$PATH\""
+        echo ""
+        echo "Or run: echo 'export PATH=\"$install_dir:\$PATH\"' >> ~/.bashrc"
+    fi
+    
+    echo ""
+    echo "Installation complete!"
+    echo "You can now run: $script_name"
+    return 0
+}
+
+# Function to show usage/help
+show_help() {
+    cat << 'EOF'
+Video Organizer and Audio Language Setter v1.1
+
+Usage: set_v.sh [OPTIONS]
+
+OPTIONS:
+  --install       Install script to ~/.local/bin (requires internet)
+  --version       Show script version
+  --help          Show this help message
+  
+INTERACTIVE MODE:
+  Run without arguments to start interactive mode
+
+EXAMPLES:
+  # Interactive mode
+  ./set_v.sh
+  
+  # Install from GitHub
+  ./set_v.sh --install
+  
+  # Show version
+  ./set_v.sh --version
+
+For more information, visit: https://github.com/Gyurus/Vid-organ
+
+EOF
+}
+
+# Parse command-line arguments
+parse_args() {
+    case "$1" in
+        --install)
+            install_script
+            exit $?
+            ;;
+        --version)
+            echo "Video Organizer v${SCRIPT_VERSION}"
+            exit 0
+            ;;
+        --help|-h)
+            show_help
+            exit 0
+            ;;
+        "")
+            # No arguments, continue to main
+            return 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            echo "Use --help for usage information" >&2
+            exit 1
+            ;;
+    esac
+}
+
+# Parse arguments first
+parse_args "$1"
+
 # Check for updates before running main
 check_for_updates
 
