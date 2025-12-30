@@ -62,15 +62,12 @@ get_user_choice() {
     local default="$2"
     echo "$prompt" >&2
     read -r choice < /dev/tty
-    echo "DEBUG: Raw choice read: '$choice'" >&2
     # Trim leading and trailing whitespace
     choice="${choice#"${choice%%[![:space:]]*}"}"
     choice="${choice%"${choice##*[![:space:]]}"}"
-    echo "DEBUG: Trimmed choice: '$choice'" >&2
     if [ -z "$choice" ] && [ -n "$default" ]; then
         choice="$default"
     fi
-    echo "DEBUG: Final choice: '$choice'" >&2
     echo "$choice"
 }
 
