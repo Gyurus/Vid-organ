@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Simple Video Organizer and Language Setter
-# Version: 1.0.2
+# Version: 1.1
 # Interactive script to organize video files and set audio language metadata
 
 # Color codes for output
@@ -12,7 +12,7 @@ BLUE=''
 NC=''
 
 # Script version
-SCRIPT_VERSION="1.0.2"
+SCRIPT_VERSION="1.1"
 SCRIPT_REPO="Gyurus/Vid-organ"
 SCRIPT_RAW_URL="https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"
 
