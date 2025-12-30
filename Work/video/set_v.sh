@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Simple Video Organizer and Language Setter
-# Version: 1.0.1
+# Version: 1.0.2
 # Interactive script to organize video files and set audio language metadata
 
 # Color codes for output
@@ -10,6 +10,11 @@ GREEN=''
 YELLOW=''
 BLUE=''
 NC=''
+
+# Script version
+SCRIPT_VERSION="1.0.2"
+SCRIPT_REPO="Gyurus/Vid-organ"
+SCRIPT_RAW_URL="https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"
 
 # Configuration file
 CONFIG_FILE="$(dirname "$0")/set_v.ini"
@@ -39,6 +44,9 @@ load_config() {
             video_extensions) VIDEO_EXTENSIONS="$value" ;;
             subtitle_extensions) SUBTITLE_EXTENSIONS="$value" ;;
             default_audio_language) DEFAULT_AUDIO_LANGUAGE="$value" ;;
+            enable_auto_update) ENABLE_AUTO_UPDATE="$value" ;;
+            github_repo) GITHUB_REPO="$value" ;;
+            github_raw_url) GITHUB_RAW_URL="$value" ;;
         esac
     done < "$CONFIG_FILE"
 }
@@ -48,6 +56,82 @@ echo "Loading configuration..."
 load_config
 echo "Configuration loaded"
 
+# Function to check for script updates
+check_for_updates() {
+    # Check if auto-update is enabled
+    if [[ "$ENABLE_AUTO_UPDATE" != "true" ]]; then
+        return 0
+    fi
+
+    # Check if curl is available
+    if ! command -v curl &> /dev/null; then
+        return 0
+    fi
+
+    echo "Checking for updates..."
+    
+    # Get the latest version from GitHub
+    local latest_version
+    latest_version=$(curl -s "${GITHUB_RAW_URL}/set_v.sh" 2>/dev/null | grep "SCRIPT_VERSION=" | head -1 | cut -d'"' -f2)
+    
+    if [ -z "$latest_version" ]; then
+        echo "Could not check for updates (network issue)"
+        return 0
+    fi
+
+    # Compare versions
+    if [ "$latest_version" != "$SCRIPT_VERSION" ]; then
+        echo "Update available! Version $latest_version (current: $SCRIPT_VERSION)"
+        
+        # Ask user if they want to update
+        echo -n "Do you want to update now? (y/n): " >&2
+        read -r update_choice < /dev/tty
+        
+        if [[ "$update_choice" == "y" || "$update_choice" == "Y" ]]; then
+            update_script
+        fi
+    else
+        echo "Script is up to date"
+    fi
+}
+
+# Function to download and apply script update
+update_script() {
+    echo "Downloading update..."
+    
+    local script_dir
+    script_dir="$(dirname "$0")"
+    local script_name="$(basename "$0")"
+    local backup_file="${script_dir}/${script_name}.bak"
+    local temp_file="${script_dir}/.${script_name}.tmp"
+    
+    # Download the latest script
+    if curl -s -o "$temp_file" "${GITHUB_RAW_URL}/${script_name}" 2>/dev/null; then
+        # Backup current script
+        if cp "$0" "$backup_file"; then
+            # Replace with new version
+            if mv "$temp_file" "$0" && chmod +x "$0"; then
+                echo "Update completed successfully!"
+                echo "Backup saved to: $backup_file"
+                echo "Please restart the script to use the new version"
+                exit 0
+            else
+                echo "Failed to install update"
+                rm -f "$temp_file"
+                return 1
+            fi
+        else
+            echo "Failed to create backup"
+            rm -f "$temp_file"
+            return 1
+        fi
+    else
+        echo "Failed to download update"
+        rm -f "$temp_file"
+        return 1
+    fi
+}
+
 # Default settings (fallback if not in config)
 MIN_FILE_SIZE_MB=${MIN_FILE_SIZE_MB:-600}
 VIDEO_EXTENSIONS=${VIDEO_EXTENSIONS:-"avi|mkv|mp4|mov|wmv|flv|webm|m4v|mpg|mpeg|3gp|ogv|ts|m2ts|mts"}
@@ -55,6 +139,9 @@ SUBTITLE_EXTENSIONS=${SUBTITLE_EXTENSIONS:-"srt|sub|ass|ssa|vtt|smi"}
 DEFAULT_PLAYER=${DEFAULT_PLAYER:-"smplayer"}
 DEFAULT_OUTPUT_DIR=${DEFAULT_OUTPUT_DIR:-"Movies.org"}
 DEFAULT_AUDIO_LANGUAGE=${DEFAULT_AUDIO_LANGUAGE:-"eng"}
+ENABLE_AUTO_UPDATE=${ENABLE_AUTO_UPDATE:-"true"}
+GITHUB_REPO=${GITHUB_REPO:-"Gyurus/Vid-organ"}
+GITHUB_RAW_URL=${GITHUB_RAW_URL:-"https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"}
 
 # Function to get user choice
 get_user_choice() {
@@ -1240,6 +1327,9 @@ main() {
     echo "Your video library is now perfectly organized!"
     echo "Tip: Check $output_dir for your organized movies"
 }
+
+# Check for updates before running main
+check_for_updates
 
 # Call main function with arguments
 main "$@"
