@@ -120,11 +120,18 @@ The script uses modern 256-color ANSI palette for better visual clarity:
 
 ## Version
 
-**Current:** v0.6.9
+**Current:** v1.5.1
 
 Updates are checked automatically from GitHub on startup (can be disabled in INI).
 
 ## Recent Changes
+
+### v1.5.1
+- Code cleanup and optimization (reduced from 1588 to 1564 lines)
+- Fixed indentation inconsistencies in helper functions
+- Removed unused variables and redundant code
+- Consolidated string processing operations
+- Improved readability and maintainability
 
 ### v0.6.9
 - True auto-update implementation (automatically downloads when enabled)

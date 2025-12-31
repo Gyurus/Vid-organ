@@ -12,12 +12,12 @@ BLUE=''
 NC=''
 
 # Script version
-SCRIPT_VERSION="1.1"
+SCRIPT_VERSION="1.5.1"
 SCRIPT_REPO="Gyurus/Vid-organ"
 SCRIPT_RAW_URL="https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"
 
 # Configuration file
-CONFIG_FILE="$(dirname "$0")/set_v.ini"
+CONFIG_FILE="${0%/*}/set_v.ini"
 
 # Function to load settings from ini file
 load_config() {
@@ -52,9 +52,7 @@ load_config() {
 }
 
 # Load configuration
-echo "Loading configuration..."
 load_config
-echo "Configuration loaded"
 
 # Function to check for script updates
 check_for_updates() {
@@ -99,9 +97,8 @@ check_for_updates() {
 update_script() {
     echo "Downloading update..."
     
-    local script_dir
-    script_dir="$(dirname "$0")"
-    local script_name="$(basename "$0")"
+    local script_dir=$(dirname "$0")
+    local script_name=$(basename "$0")
     local backup_file="${script_dir}/${script_name}.bak"
     local temp_file="${script_dir}/.${script_name}.tmp"
     
@@ -249,103 +246,118 @@ extract_movie_info() {
 
     # Remove common quality/format tags (case insensitive)
     base_name=$(echo "$base_name" | sed -E 's/[._-]*(BluRay|BRRip|BDRip|HDRip|WEBRip|WEB-DL|DVDRip|HDTV|SDTV)[._-]*//gi')
-    base_name=$(echo "$base_name" | sed -E 's/[._-]*(1080p|720p|480p|2160p|4K|UHD)[._-]*//gi')
-    base_name=$(echo "$base_name" | sed -E 's/[._-]*(x264|x265|h264|h265|HEVC|AVC)[._-]*//gi')
-    base_name=$(echo "$base_name" | sed -E 's/[._-]*(AAC|AC3|DTS|DTS-HD|TrueHD|FLAC|MP3|Atmos)[._-]*//gi')
-    base_name=$(echo "$base_name" | sed -E 's/[._-]*(5\.1|7\.1|2\.0)[._-]*//gi')
-    base_name=$(echo "$base_name" | sed -E 's/[._-]*(EXTENDED|UNRATED|REMASTERED|DIRECTORS[._-]*CUT|DC)[._-]*//gi')
-    base_name=$(echo "$base_name" | sed -E 's/[._-]*(PROPER|REPACK|INTERNAL|LIMITED)[._-]*//gi')
-    base_name=$(echo "$base_name" | sed -E 's/[._-]*[A-Z0-9]{3,}[._-]*$//g')  # Remove group tags at the end
+    base_name=$(echo "$base_name" | sed -E 's/[._-]*(1080p|720p|480p|2160p|4K|UHD|10bit)[._-]*//gi')
+    base_name=$(echo "$base_name" | sed -E 's/[._-]*(x264|x265|h264|h265|HEVC|AVC|AV1)[._-]*//gi')
+    base_name=$(echo "$base_name" | sed -E 's/[._-]*(AAC|AC3|DTS|DTS-HD|TrueHD|FLAC|MP3|Atmos|LPCM)[._-]*//gi')
+    base_name=$(echo "$base_name" | sed -E 's/[._-]*(5\.1|7\.1|2\.0|6\.1|10\.0)[._-]*//gi')
+    base_name=$(echo "$base_name" | sed -E 's/[._-]*(EXTENDED|UNRATED|REMASTERED|DIRECTORS[._-]*CUT|DC|FINAL)[._-]*//gi')
+    base_name=$(echo "$base_name" | sed -E 's/[._-]*(PROPER|REPACK|INTERNAL|LIMITED|COMPLETE)[._-]*//gi')
+    
+    # Remove additional common tags and patterns
+    base_name=$(echo "$base_name" | sed -E 's/[._-]*(DUBBED|SUBBED|SUB|ENG|DUB|REMUX)[._-]*//gi')
+    base_name=$(echo "$base_name" | sed -E 's/[._-]*(COMPLETE[._-]*SERIES|FULL[._-]*SERIES|SEASON|EPISODE)[._-]*//gi')
+    base_name=$(echo "$base_name" | sed -E 's/[._-]*(SERIES|S[0-9]{2}E[0-9]{2}|E[0-9]{2,3})[._-]*//gi')
+    
+    # Remove site/release group names (common patterns)
+    base_name=$(echo "$base_name" | sed -E 's/[._-]*(YIFY|EZTV|RARBG|TGx)[._-]*//gi')
+    
+    # Remove trailing group tags like [GROUPNAME] at the end
+    base_name=$(echo "$base_name" | sed -E 's/\[[A-Za-z0-9_\-]+\][._-]*$//g')
+    base_name=$(echo "$base_name" | sed -E 's/[._-]*[A-Z]{2,}[A-Z0-9]{1,}[._-]*$//g')  # Remove group tags at the end
     
     # Remove empty or punctuation-only brackets like "()", "[]", "{}"
     base_name=$(echo "$base_name" | sed -E 's/\(([[:space:][:punct:]]*)\)//g; s/\[([[:space:][:punct:]]*)\]//g; s/\{([[:space:][:punct:]]*)\}//g')
     
-    # Remove year from base name FIRST if found (so we can properly detect language codes)
+    # Remove year from base name if found (so we can properly detect language codes)
     if [ -n "$extracted_year" ]; then
         base_name=$(echo "$base_name" | sed -E "s/[._-]*${extracted_year}[._-]*//g")
         year="$extracted_year"
     fi
     
-    # Remove trailing runs of concatenated 3-letter language codes without separators (e.g., 'korkorkor', 'engengeng')
-    # Supported codes: eng hun ger kor fre spa ita por rus jpn
-    # This handles: _eng, engeng, engengeng, etc.
-    while [[ "$base_name" =~ [._-]?(eng|hun|ger|kor|fre|spa|ita|por|rus|jpn)$ ]]; do
+    # Remove trailing language code sequences
+    # Supported codes: eng hun ger kor fre spa ita por rus jpn chi ara hin ben tha vie
+    local lang_pattern="(eng|hun|ger|kor|fre|spa|ita|por|rus|jpn|chi|ara|hin|ben|tha|vie)"
+    while [[ "$base_name" =~ [._-]?${lang_pattern}$ ]]; do
         base_name="${base_name%???}"  # Remove last 3 characters (the language code)
         base_name="${base_name%[._-]}"  # Remove separator if present before it
     done
     # Also remove trailing sequences like _eng_hun or -eng-hun at the end
-    base_name=$(echo "$base_name" | sed -E 's/([._-](eng|hun|ger|kor|fre|spa|ita|por|rus|jpn))+[._-]*$//I')
+    base_name=$(echo "$base_name" | sed -E "s/([._-]${lang_pattern})+[._-]*$//I")
 
-    # Clean up movie name: replace dots/underscores with spaces, collapse multiple spaces
-    movie_name=$(echo "$base_name" | sed 's/[._-]/ /g' | sed 's/  */ /g' | sed 's/^ *//;s/ *$//')
+    # Remove parenthetical content that typically doesn't belong in title (year already removed)
+    base_name=$(echo "$base_name" | sed -E 's/\([0-9]{3,4}p\)//g')  # Remove (1080p) style
+    base_name=$(echo "$base_name" | sed -E 's/\(.*[0-9]{4}.*\)//g')  # Remove year in parentheses again
+
+    # Clean up movie name: replace dots/underscores/hyphens with spaces, collapse multiple spaces
+    movie_name=$(echo "$base_name" | sed 's/[._-]/ /g; s/  */ /g; s/^ *//; s/ *$//')
     
-    # Final trim: remove any stray empty parentheses left after spacing
-    movie_name=$(echo "$movie_name" | sed -E 's/\(([[:space:][:punct:]]*)\)//g' | sed 's/  */ /g' | sed 's/^ *//;s/ *$//')
+    # Final trim: remove any stray empty parentheses and trailing quality tags
+    movie_name=$(echo "$movie_name" | sed -E 's/\(([[:space:][:punct:]]*)\)//g; s/(^| )(720p|1080p|2160p|4K|UHD|480p)$//I; s/  */ /g; s/^ *//; s/ *$//')
 
     echo "${movie_name}|${year}"
 }
 
-    # URL-encode a string (RFC 3986-ish for our needs)
-    url_encode() {
-        local s="$1"
-        local out=""
-        local c
-        local i
-        LC_ALL=C
-        for (( i=0; i<${#s}; i++ )); do
-            c=${s:i:1}
-            case "$c" in
-                [a-zA-Z0-9.~_-]) out+="$c" ;;
-                ' ') out+="%20" ;;
-                *) printf -v hex '%%%02X' "'${c}'"; out+="$hex" ;;
-            esac
-        done
-        echo "$out"
-    }
+# URL-encode a string (RFC 3986-ish for our needs)
+url_encode() {
+    local s="$1"
+    local out=""
+    local c
+    local i
+    LC_ALL=C
+    for (( i=0; i<${#s}; i++ )); do
+        c=${s:i:1}
+        case "$c" in
+            [a-zA-Z0-9.~_-]) out+="$c" ;;
+            ' ') out+="%20" ;;
+            *) printf -v hex '%%%02X' "'${c}'"; out+="$hex" ;;
+        esac
+    done
+    echo "$out"
+}
 
-    # Normalize strings for comparison (lowercase, alnum only, collapse spaces)
-    normalize_string() {
-        echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/ /g' | sed 's/  */ /g' | sed 's/^ *//;s/ *$//'
-    }
+# Normalize strings for comparison (lowercase, alnum only, collapse spaces)
+normalize_string() {
+    echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/ /g' | sed 's/  */ /g' | sed 's/^ *//;s/ *$//'
+}
 
-    # Verify title and year via OMDb (if OMDB_API_KEY set) or IMDb suggestion API
-    verify_title_year_with_imdb() {
-        local title="$1"
-        local year="$2"
+# Verify title and year via OMDb (if OMDB_API_KEY set) or IMDb suggestion API
+verify_title_year_with_imdb() {
+    local title="$1"
+    local year="$2"
 
-        # If no year, skip verification
-        if [ -z "$year" ]; then
-            return 0
-        fi
+    # If no year, skip verification
+    if [ -z "$year" ]; then
+        return 0
+    fi
 
-        if ! command -v curl >/dev/null 2>&1; then
-            echo "WARNING: curl not installed; skipping IMDb verification" >&2
-            return 2
-        fi
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "WARNING: curl not installed; skipping IMDb verification" >&2
+        return 2
+    fi
 
-        # Prefer OMDb if API key is provided
-        if [ -n "$OMDB_API_KEY" ]; then
-            local url="https://www.omdbapi.com/?t=$(url_encode "$title")&y=$year&type=movie&apikey=$OMDB_API_KEY"
-            local json
-            json=$(curl -sL "$url")
-            if echo "$json" | grep -q '"Response":"True"'; then
-                local y
-                y=$(echo "$json" | grep -o '"Year":"[0-9]\{4\}"' | head -1 | sed -E 's/.*"Year":"([0-9]{4})".*/\1/')
-                local tt
-                tt=$(echo "$json" | grep -o '"Title":"[^"]*"' | head -1 | sed -E 's/.*"Title":"([^"]*)".*/\1/')
-                if [ "$y" = "$year" ]; then
-                    return 0
-                else
-                    echo "WARNING: IMDb/OMDb year mismatch: got '$tt' ($y), expected '$title' ($year)" >&2
-                    return 1
-                fi
+    # Prefer OMDb if API key is provided
+    if [ -n "$OMDB_API_KEY" ]; then
+        local url="https://www.omdbapi.com/?t=$(url_encode "$title")&y=$year&type=movie&apikey=$OMDB_API_KEY"
+        local json
+        json=$(curl -sL "$url")
+        if echo "$json" | grep -q '"Response":"True"'; then
+            local y
+            y=$(echo "$json" | grep -o '"Year":"[0-9]\{4\}"' | head -1 | sed -E 's/.*"Year":"([0-9]{4})".*/\1/')
+            local tt
+            tt=$(echo "$json" | grep -o '"Title":"[^"]*"' | head -1 | sed -E 's/.*"Title":"([^"]*)".*/\1/')
+            if [ "$y" = "$year" ]; then
+                return 0
             else
-                echo "WARNING: OMDb found no match for '$title' ($year)" >&2
+                echo "WARNING: IMDb/OMDb year mismatch: got '$tt' ($y), expected '$title' ($year)" >&2
                 return 1
             fi
+        else
+            echo "WARNING: OMDb found no match for '$title' ($year)" >&2
+            return 1
         fi
+    fi
 
-        # Fallback to IMDb suggestion API (unofficial)
+    # Fallback to IMDb suggestion API (unofficial)
         local encoded
         encoded=$(url_encode "$title")
         local first
@@ -372,6 +384,104 @@ extract_movie_info() {
             return 1
         fi
     }
+
+# Function to check IMDb for movie matches and suggest corrections
+check_imdb_match() {
+    local title="$1"
+    local year="$2"
+    
+    # Skip if no curl
+    if ! command -v curl &> /dev/null; then
+        return 1
+    fi
+    
+    # Skip if no title
+    if [ -z "$title" ]; then
+        return 1
+    fi
+    
+    local encoded
+    encoded=$(url_encode "$title")
+    local first
+    first=$(printf '%s' "$encoded" | cut -c1 | tr '[:upper:]' '[:lower:]')
+    local imdb_url="https://v2.sg.media-imdb.com/suggestion/${first}/${encoded}.json"
+    
+    local json
+    json=$(curl -s "$imdb_url" 2>/dev/null)
+    
+    if [ -z "$json" ]; then
+        echo ""
+        echo "⚠ Could not verify on IMDb (network issue)" >&2
+        return 1
+    fi
+    
+    # Parse JSON response - get top 3 results
+    local results=()
+    local i=0
+    
+    # Extract title and year from JSON response
+    while IFS= read -r line; do
+        if [[ $line == *'"l":"'* ]]; then
+            local movie_title
+            movie_title=$(echo "$line" | sed -E 's/.*"l":"([^"]*)".*/\1/')
+            local movie_year=""
+            
+            # Try to extract year from same JSON object
+            if [[ $line == *'"y":'* ]]; then
+                movie_year=$(echo "$line" | sed -E 's/.*"y":([0-9]{4}).*/\1/')
+            fi
+            
+            results+=("$movie_title|$movie_year")
+            ((i++))
+            [ $i -ge 5 ] && break
+        fi
+    done < <(echo "$json" | grep -o '{[^}]*"l":"[^"]*"[^}]*}')
+    
+    # If no results found
+    if [ ${#results[@]} -eq 0 ]; then
+        echo ""
+        echo "⚠ No IMDb matches found for: $title ($year)" >&2
+        return 1
+    fi
+    
+    # Check if first result matches
+    local first_result="${results[0]}"
+    local found_title=$(echo "$first_result" | cut -d'|' -f1)
+    local found_year=$(echo "$first_result" | cut -d'|' -f2)
+    
+    local norm_input
+    norm_input=$(normalize_string "$title")
+    local norm_found
+    norm_found=$(normalize_string "$found_title")
+    
+    # Exact match or very close match
+    if [ "$norm_input" = "$norm_found" ] && ([ -z "$year" ] || [ "$found_year" = "$year" ]); then
+        echo ""
+        echo "✓ IMDb Match Found:"
+        echo "  Title: $found_title"
+        [ -n "$found_year" ] && echo "  Year: $found_year"
+        echo ""
+        return 0
+    fi
+    
+    # No exact match - show suggestions
+    echo ""
+    echo "⚠ IMDb Verification:"
+    echo "  Extracted: $title $([ -n "$year" ] && echo "($year)" || echo "(no year)")"
+    echo ""
+    echo "  Suggestions from IMDb:"
+    
+    local counter=1
+    for result in "${results[@]}"; do
+        local rtitle=$(echo "$result" | cut -d'|' -f1)
+        local ryear=$(echo "$result" | cut -d'|' -f2)
+        echo "  $counter. $rtitle $([ -n "$ryear" ] && echo "($ryear)" || echo "")"
+        ((counter++))
+    done
+    echo ""
+    
+    return 1
+}
 
 # Function to get audio languages from file (returns detailed track info)
 get_audio_languages() {
@@ -403,10 +513,6 @@ play_video() {
 
     echo "Playing video: $(basename "$file")"
     echo "Close video player to return to script..."
-
-    # Save terminal settings
-    local saved_stty
-    saved_stty=$(stty -g 2>/dev/null || echo "")
 
     case "$player" in
         "smplayer")
@@ -471,10 +577,8 @@ set_audio_language() {
 
     # Fallback to ffmpeg for (most) formats
     # Use a safe temp filename in the same directory
-    local dir
-    dir=$(dirname "$file")
-    local base
-    base=$(basename "$file")
+    local dir=$(dirname "$file")
+    local base=$(basename "$file")
     local temp_file="${dir}/.tmp_${RANDOM}_${base}"
     
     # Determine output format explicitly
@@ -524,16 +628,14 @@ find_subtitle_files() {
     clean_title=$(echo "$movie_title" | sed 's/[^a-zA-Z0-9]//g' | tr '[:upper:]' '[:lower:]')
 
     # Find subtitle files recursively in source directory
-    find "$source_dir" -type f \( -iname "*.srt" -o -iname "*.sub" -o -iname "*.ass" -o -iname "*.ssa" -o -iname "*.vtt" -o -iname "*.smi" \) -print0 2>/dev/null | while IFS= read -r -d '' file; do
-        local filename
-        filename=$(basename "$file")
+    find "$source_dir" -type f \( -iname "*.srt" -o -iname "*.sub" -o -iname "*.ass" -o -iname "*.ssa" -o -iname "*.vtt" -o -iname "*.smi" \) -print0 2>/dev/null | while IFS= read -r -d '' sub_file; do
+        local filename=$(basename "$sub_file")
         local base_name="${filename%.*}"
-        local clean_base
-        clean_base=$(echo "$base_name" | sed 's/[^a-zA-Z0-9]//g' | tr '[:upper:]' '[:lower:]')
+        local clean_base=$(echo "$base_name" | sed 's/[^a-zA-Z0-9]//g' | tr '[:upper:]' '[:lower:]')
 
         # Check if subtitle filename contains the movie title
         if [[ "$clean_base" == *"$clean_title"* ]]; then
-            echo "$file"
+            echo "$sub_file"
         fi
     done
 }
@@ -546,6 +648,7 @@ clean_language_tags_before_year() {
     local base_name="${filename%.*}"
     local extension="${filename##*.}"
     local langs_part
+    local lang_pattern="(eng|hun|ger|kor|fre|spa|ita|por|rus|jpn)"
     
     # Pattern: Find the year (rightmost 4 digits after underscore)
     if [[ "$base_name" =~ ^(.+)_([0-9]{4})$ ]]; then
@@ -553,14 +656,13 @@ clean_language_tags_before_year() {
         local year="${BASH_REMATCH[2]}"
         
         # Now check if before_year ends with language codes
-        # Pattern: check if it ends with (eng|hun|ger|kor|fre|spa|ita|por|rus|jpn)(_lang)*
-        if [[ "$before_year" =~ _((eng|hun|ger|kor|fre|spa|ita|por|rus|jpn)(_[a-z]{3})*)$ ]]; then
+        if [[ "$before_year" =~ _(${lang_pattern}(_[a-z]{3})*)$ ]]; then
             langs_part="${BASH_REMATCH[1]}"
             
             # Remove ALL trailing language codes from before_year to get clean title
             # Keep removing underscores + language codes from the end
             local title_part="$before_year"
-            while [[ "$title_part" =~ _(eng|hun|ger|kor|fre|spa|ita|por|rus|jpn)$ ]]; do
+            while [[ "$title_part" =~ _${lang_pattern}$ ]]; do
                 title_part="${title_part%_*}"
             done
             
@@ -610,10 +712,8 @@ rename_with_languages() {
     local file="$1"
     local languages="$2"
 
-    local dir
-    dir=$(dirname "$file")
-    local filename
-    filename=$(basename "$file")
+    local dir=$(dirname "$file")
+    local filename=$(basename "$file")
     local extension="${filename##*.}"
     local base_name="${filename%.*}"
 
@@ -641,7 +741,6 @@ rename_with_languages() {
 # Function to get detailed video and audio information
 get_video_details() {
     local file="$1"
-    local info=""
     
     # Get video duration and resolution
     local duration=$(ffprobe -v error -select_streams v:0 -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$file" 2>/dev/null | cut -d. -f1)
@@ -874,15 +973,8 @@ main() {
     echo
 
     # Check and install FFprobe/ffmpeg if needed
-    echo "Checking dependencies..."
-    echo "Checking FFmpeg installation..."
     check_and_install_ffprobe
-    echo "FFmpeg ready"
-
-    echo "Checking SMPlayer installation..."
     check_and_install_smplayer
-    echo "SMPlayer ready"
-    echo "All dependencies satisfied"
     echo
 
     # Get video folder
