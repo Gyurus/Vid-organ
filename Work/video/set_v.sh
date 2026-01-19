@@ -386,10 +386,11 @@ verify_title_year_with_imdb() {
         fi
     }
 
-# Function to check IMDb for movie matches and suggest corrections
-check_imdb_match() {
+# Helper function to query IMDb and parse results
+# Returns array of results in format "title|year" (one per line)
+query_imdb_suggestions() {
     local title="$1"
-    local year="$2"
+    local max_results="${2:-5}"
     
     # Skip if no curl
     if ! command -v curl &> /dev/null; then
@@ -411,16 +412,11 @@ check_imdb_match() {
     json=$(curl -s "$imdb_url" 2>/dev/null)
     
     if [ -z "$json" ]; then
-        echo ""
-        echo "⚠ Could not verify on IMDb (network issue)" >&2
         return 1
     fi
     
-    # Parse JSON response - get top 3 results
-    local results=()
+    # Parse JSON response - extract title and year pairs
     local i=0
-    
-    # Extract title and year from JSON response
     while IFS= read -r line; do
         if [[ $line == *'"l":"'* ]]; then
             local movie_title
@@ -432,13 +428,27 @@ check_imdb_match() {
                 movie_year=$(echo "$line" | sed -E 's/.*"y":([0-9]{4}).*/\1/')
             fi
             
-            results+=("$movie_title|$movie_year")
+            echo "$movie_title|$movie_year"
             ((i++))
-            [ $i -ge 5 ] && break
+            [ $i -ge "$max_results" ] && break
         fi
     done < <(echo "$json" | grep -o '{[^}]*"l":"[^"]*"[^}]*}')
     
-    # If no results found
+    return 0
+}
+
+# Function to check IMDb for movie matches and suggest corrections
+check_imdb_match() {
+    local title="$1"
+    local year="$2"
+    
+    # Query IMDb for suggestions
+    local results=()
+    while IFS= read -r line; do
+        results+=("$line")
+    done < <(query_imdb_suggestions "$title" 5)
+    
+    # If no results found or query failed
     if [ ${#results[@]} -eq 0 ]; then
         echo ""
         echo "⚠ No IMDb matches found for: $title ($year)" >&2
@@ -490,57 +500,13 @@ verify_and_correct_with_imdb() {
     local title="$1"
     local year="$2"
     
-    # Skip if no curl
-    if ! command -v curl &> /dev/null; then
-        echo "${title}|${year}"
-        return 0
-    fi
-    
-    # Skip if no title
-    if [ -z "$title" ]; then
-        echo "${title}|${year}"
-        return 0
-    fi
-    
-    local encoded
-    encoded=$(url_encode "$title")
-    local first
-    first=$(printf '%s' "$encoded" | cut -c1 | tr '[:upper:]' '[:lower:]')
-    local imdb_url="https://v2.sg.media-imdb.com/suggestion/${first}/${encoded}.json"
-    
-    local json
-    json=$(curl -s "$imdb_url" 2>/dev/null)
-    
-    if [ -z "$json" ]; then
-        echo ""
-        echo "⚠ Could not verify on IMDb (network issue)" >&2
-        echo "${title}|${year}"
-        return 0
-    fi
-    
-    # Parse JSON response - get top 5 results
+    # Query IMDb for suggestions
     local results=()
-    local i=0
-    
-    # Extract title and year from JSON response
     while IFS= read -r line; do
-        if [[ $line == *'"l":"'* ]]; then
-            local movie_title
-            movie_title=$(echo "$line" | sed -E 's/.*"l":"([^"]*)".*/\1/')
-            local movie_year=""
-            
-            # Try to extract year from same JSON object
-            if [[ $line == *'"y":'* ]]; then
-                movie_year=$(echo "$line" | sed -E 's/.*"y":([0-9]{4}).*/\1/')
-            fi
-            
-            results+=("$movie_title|$movie_year")
-            ((i++))
-            [ $i -ge 5 ] && break
-        fi
-    done < <(echo "$json" | grep -o '{[^}]*"l":"[^"]*"[^}]*}')
+        results+=("$line")
+    done < <(query_imdb_suggestions "$title" 5)
     
-    # If no results found
+    # If no results found or query failed
     if [ ${#results[@]} -eq 0 ]; then
         echo ""
         echo "⚠ No IMDb matches found for: $title $([ -n "$year" ] && echo "($year)" || echo "")" >&2
