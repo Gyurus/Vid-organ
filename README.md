@@ -1,1 +1,1 @@
-Organize and renaming vide files in a folder
+Organize and renaming video files in a folder
