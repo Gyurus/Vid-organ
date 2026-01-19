@@ -47,6 +47,9 @@ load_config() {
             enable_auto_update) ENABLE_AUTO_UPDATE="$value" ;;
             github_repo) GITHUB_REPO="$value" ;;
             github_raw_url) GITHUB_RAW_URL="$value" ;;
+            tmdb_api_key) TMDB_API_KEY="$value" ;;
+            enable_tmdb_verification) ENABLE_TMDB_VERIFICATION="$value" ;;
+            enable_imdb_verification) ENABLE_IMDB_VERIFICATION="$value" ;;
         esac
     done < "$CONFIG_FILE"
 }
@@ -139,6 +142,9 @@ DEFAULT_AUDIO_LANGUAGE=${DEFAULT_AUDIO_LANGUAGE:-"eng"}
 ENABLE_AUTO_UPDATE=${ENABLE_AUTO_UPDATE:-"true"}
 GITHUB_REPO=${GITHUB_REPO:-"Gyurus/Vid-organ"}
 GITHUB_RAW_URL=${GITHUB_RAW_URL:-"https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"}
+TMDB_API_KEY=${TMDB_API_KEY:-""}
+ENABLE_TMDB_VERIFICATION=${ENABLE_TMDB_VERIFICATION:-"true"}
+ENABLE_IMDB_VERIFICATION=${ENABLE_IMDB_VERIFICATION:-"true"}
 
 # Function to get user choice
 get_user_choice() {
@@ -481,6 +487,177 @@ check_imdb_match() {
     echo ""
     
     return 1
+}
+
+# Function to search TMDb for movie matches
+search_tmdb() {
+    local title="$1"
+    local year="$2"
+    
+    # Skip if TMDb disabled or no API key
+    if [ "$ENABLE_TMDB_VERIFICATION" != "true" ] || [ -z "$TMDB_API_KEY" ]; then
+        return 1
+    fi
+    
+    # Skip if no curl
+    if ! command -v curl &> /dev/null; then
+        return 1
+    fi
+    
+    # Skip if no title
+    if [ -z "$title" ]; then
+        return 1
+    fi
+    
+    local encoded
+    encoded=$(url_encode "$title")
+    local tmdb_url="https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encoded}"
+    
+    # Add year parameter if provided
+    if [ -n "$year" ]; then
+        tmdb_url="${tmdb_url}&year=${year}"
+    fi
+    
+    local json
+    json=$(curl -s "$tmdb_url" 2>/dev/null)
+    
+    if [ -z "$json" ]; then
+        return 1
+    fi
+    
+    # Parse JSON response - get top 5 results
+    # Using grep and sed for JSON parsing (no jq dependency)
+    local results=()
+    local i=0
+    
+    # Extract title and release_date from JSON results array
+    while IFS= read -r line; do
+        if [[ $line == *'"title":'* ]]; then
+            local movie_title
+            movie_title=$(echo "$line" | sed -E 's/.*"title":"([^"]*)".*/\1/')
+            local movie_year=""
+            
+            # Look for release_date in the same entry (next few lines)
+            local next_lines
+            next_lines=$(echo "$json" | grep -A 3 "\"title\":\"$movie_title\"" | grep '"release_date"')
+            if [ -n "$next_lines" ]; then
+                movie_year=$(echo "$next_lines" | sed -E 's/.*"release_date":"([0-9]{4}).*/\1/' | head -1)
+            fi
+            
+            results+=("$movie_title|$movie_year")
+            ((i++))
+            [ $i -ge 5 ] && break
+        fi
+    done < <(echo "$json" | grep -o '"title":"[^"]*"')
+    
+    # Return results as newline-separated
+    if [ ${#results[@]} -gt 0 ]; then
+        printf '%s\n' "${results[@]}"
+        return 0
+    fi
+    
+    return 1
+}
+
+# Function to prompt user to select from TMDb and IMDb matches
+prompt_user_for_title_selection() {
+    local extracted_title="$1"
+    local extracted_year="$2"
+    local imdb_results="$3"   # newline-separated results
+    local tmdb_results="$4"   # newline-separated results
+    
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "⚠  TITLE VERIFICATION"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Extracted: $extracted_title $([ -n "$extracted_year" ] && echo "($extracted_year)" || echo "(no year)")"
+    echo ""
+    
+    # Combine and display results from both APIs
+    local all_options=()
+    local counter=1
+    
+    # Add IMDb results if available
+    if [ -n "$imdb_results" ]; then
+        echo "From IMDb:"
+        while IFS= read -r result; do
+            if [ -n "$result" ]; then
+                all_options+=("imdb|$result")
+                local rtitle=$(echo "$result" | cut -d'|' -f1)
+                local ryear=$(echo "$result" | cut -d'|' -f2)
+                echo "  [$counter] $rtitle $([ -n "$ryear" ] && echo "($ryear)" || echo "")"
+                ((counter++))
+            fi
+        done <<< "$imdb_results"
+        echo ""
+    fi
+    
+    # Add TMDb results if available
+    if [ -n "$tmdb_results" ]; then
+        echo "From TMDb:"
+        while IFS= read -r result; do
+            if [ -n "$result" ]; then
+                all_options+=("tmdb|$result")
+                local rtitle=$(echo "$result" | cut -d'|' -f1)
+                local ryear=$(echo "$result" | cut -d'|' -f2)
+                echo "  [$counter] $rtitle $([ -n "$ryear" ] && echo "($ryear)" || echo "")"
+                ((counter++))
+            fi
+        done <<< "$tmdb_results"
+        echo ""
+    fi
+    
+    # If no results from either API, use extracted values
+    if [ ${#all_options[@]} -eq 0 ]; then
+        echo "No matches found from IMDb or TMDb"
+        echo "Using extracted values"
+        echo "$extracted_title|$extracted_year"
+        return 0
+    fi
+    
+    # Add option to use extracted values as-is
+    echo "  [0] Use extracted values: $extracted_title $([ -n "$extracted_year" ] && echo "($extracted_year)" || echo "")"
+    echo "  [m] Enter title/year manually"
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    # Prompt user for selection
+    local choice
+    while true; do
+        choice=$(get_user_choice "Select correct match (0-$((counter-1)) or 'm' for manual)" "0")
+        
+        # Handle manual entry
+        if [[ "$choice" == "m" || "$choice" == "M" ]]; then
+            echo ""
+            echo "Enter movie details manually:"
+            local manual_title
+            manual_title=$(get_user_choice "Title:" "$extracted_title")
+            local manual_year
+            manual_year=$(get_user_choice "Year:" "$extracted_year")
+            echo "$manual_title|$manual_year"
+            return 0
+        fi
+        
+        # Validate numeric choice
+        if [[ "$choice" =~ ^[0-9]+$ ]]; then
+            if [ "$choice" -eq 0 ]; then
+                # Use extracted values
+                echo "$extracted_title|$extracted_year"
+                return 0
+            elif [ "$choice" -ge 1 ] && [ "$choice" -lt "$counter" ]; then
+                # Use selected match
+                local selected="${all_options[$((choice-1))]}"
+                local source=$(echo "$selected" | cut -d'|' -f1)
+                local title=$(echo "$selected" | cut -d'|' -f2)
+                local year=$(echo "$selected" | cut -d'|' -f3)
+                echo "✓ Selected from $source: $title ($year)"
+                echo "$title|$year"
+                return 0
+            fi
+        fi
+        
+        echo "Invalid choice. Please enter a number between 0 and $((counter-1)), or 'm' for manual entry" >&2
+    done
 }
 
 # Function to get audio languages from file (returns detailed track info)
@@ -1139,8 +1316,76 @@ main() {
             echo "Year: $movie_year"
         fi
 
-        # Verify title and year against IMDb/OMDb (warning only)
-        verify_title_year_with_imdb "$movie_title" "$movie_year" || true
+        # Interactive verification with both IMDb and TMDb
+        echo ""
+        echo "Verifying title and year with online databases..."
+        
+        # Search IMDb for matches
+        local imdb_matches=""
+        if [ "$ENABLE_IMDB_VERIFICATION" = "true" ]; then
+            echo "Checking IMDb..."
+            if ! check_imdb_match "$movie_title" "$movie_year" 2>&1 | grep -q "✓ IMDb Match Found"; then
+                # Get IMDb results if no exact match
+                local encoded
+                encoded=$(url_encode "$movie_title")
+                local first
+                first=$(printf '%s' "$encoded" | cut -c1 | tr '[:upper:]' '[:lower:]')
+                local imdb_url="https://v2.sg.media-imdb.com/suggestion/${first}/${encoded}.json"
+                local json
+                json=$(curl -s "$imdb_url" 2>/dev/null)
+                
+                if [ -n "$json" ]; then
+                    # Parse top 5 results from IMDb
+                    local i=0
+                    while IFS= read -r line; do
+                        if [[ $line == *'"l":"'* ]]; then
+                            local imdb_title
+                            imdb_title=$(echo "$line" | sed -E 's/.*"l":"([^"]*)".*/\1/')
+                            local imdb_year=""
+                            
+                            if [[ $line == *'"y":'* ]]; then
+                                imdb_year=$(echo "$line" | sed -E 's/.*"y":([0-9]{4}).*/\1/')
+                            fi
+                            
+                            if [ -z "$imdb_matches" ]; then
+                                imdb_matches="${imdb_title}|${imdb_year}"
+                            else
+                                imdb_matches="${imdb_matches}"$'\n'"${imdb_title}|${imdb_year}"
+                            fi
+                            ((i++))
+                            [ $i -ge 5 ] && break
+                        fi
+                    done < <(echo "$json" | grep -o '{[^}]*"l":"[^"]*"[^}]*}')
+                fi
+            else
+                # Exact match found, continue without prompting
+                imdb_matches=""
+            fi
+        fi
+        
+        # Search TMDb for matches
+        local tmdb_matches=""
+        if [ "$ENABLE_TMDB_VERIFICATION" = "true" ] && [ -n "$TMDB_API_KEY" ]; then
+            echo "Checking TMDb..."
+            tmdb_matches=$(search_tmdb "$movie_title" "$movie_year")
+        fi
+        
+        # Check if we need to prompt user for verification
+        if [ -n "$imdb_matches" ] || [ -n "$tmdb_matches" ]; then
+            # Multiple matches found - prompt user to select
+            local verified_info
+            verified_info=$(prompt_user_for_title_selection "$movie_title" "$movie_year" "$imdb_matches" "$tmdb_matches")
+            
+            # Update movie_title and movie_year with user selection
+            movie_title=$(echo "$verified_info" | cut -d'|' -f1)
+            movie_year=$(echo "$verified_info" | cut -d'|' -f2)
+            
+            echo ""
+            echo "Using verified title: $movie_title $([ -n "$movie_year" ] && echo "($movie_year)" || echo "")"
+        else
+            echo "✓ Title/year verified successfully"
+        fi
+        echo ""
 
         # Create subfolder name (sanitize for filesystem)
         local subfolder_name=""
