@@ -391,8 +391,8 @@ verify_title_year_with_imdb() {
         fi
     }
 
-# Function to check IMDb for movie matches and suggest corrections
-check_imdb_match() {
+# Function to search IMDb for movie matches and return results
+search_imdb() {
     local title="$1"
     local year="$2"
     
@@ -416,12 +416,10 @@ check_imdb_match() {
     json=$(curl -s "$imdb_url" 2>/dev/null)
     
     if [ -z "$json" ]; then
-        echo ""
-        echo "⚠ Could not verify on IMDb (network issue)" >&2
         return 1
     fi
     
-    # Parse JSON response - get top 3 results
+    # Parse JSON response - get top 5 results
     local results=()
     local i=0
     
@@ -443,12 +441,37 @@ check_imdb_match() {
         fi
     done < <(echo "$json" | grep -o '{[^}]*"l":"[^"]*"[^}]*}')
     
-    # If no results found
-    if [ ${#results[@]} -eq 0 ]; then
+    # Return results as newline-separated
+    if [ ${#results[@]} -gt 0 ]; then
+        printf '%s\n' "${results[@]}"
+        return 0
+    fi
+    
+    return 1
+}
+
+# Function to check IMDb for movie matches and suggest corrections
+check_imdb_match() {
+    local title="$1"
+    local year="$2"
+    
+    # Get IMDb results
+    local imdb_results
+    imdb_results=$(search_imdb "$title" "$year")
+    
+    if [ -z "$imdb_results" ]; then
         echo ""
-        echo "⚠ No IMDb matches found for: $title ($year)" >&2
+        echo "⚠ Could not verify on IMDb (network issue or no matches)" >&2
         return 1
     fi
+    
+    # Parse results
+    local results=()
+    while IFS= read -r result; do
+        if [ -n "$result" ]; then
+            results+=("$result")
+        fi
+    done <<< "$imdb_results"
     
     # Check if first result matches
     local first_result="${results[0]}"
@@ -525,30 +548,40 @@ search_tmdb() {
         return 1
     fi
     
-    # Parse JSON response - get top 5 results
-    # Using grep and sed for JSON parsing (no jq dependency)
-    local results=()
-    local i=0
+    # Parse JSON response - extract results array and process movies
+    # Each movie has: "title":"Movie Name","release_date":"YYYY-MM-DD"
+    # Using a more efficient single-pass approach
+    local results_section
+    results_section=$(echo "$json" | grep -o '"results":\[[^]]*\]' | head -1)
     
-    # Extract title and release_date from JSON results array
-    while IFS= read -r line; do
-        if [[ $line == *'"title":'* ]]; then
+    if [ -z "$results_section" ]; then
+        return 1
+    fi
+    
+    # Extract title and year pairs from the results section
+    local i=0
+    local results=()
+    
+    # Process each movie object in the results array
+    while IFS= read -r movie_obj; do
+        if [ -n "$movie_obj" ]; then
+            # Extract title
             local movie_title
-            movie_title=$(echo "$line" | sed -E 's/.*"title":"([^"]*)".*/\1/')
-            local movie_year=""
+            movie_title=$(echo "$movie_obj" | sed -E 's/.*"title":"([^"]*).*/\1/')
             
-            # Look for release_date in the same entry (next few lines)
-            local next_lines
-            next_lines=$(echo "$json" | grep -A 3 "\"title\":\"$movie_title\"" | grep '"release_date"')
-            if [ -n "$next_lines" ]; then
-                movie_year=$(echo "$next_lines" | sed -E 's/.*"release_date":"([0-9]{4}).*/\1/' | head -1)
+            # Extract year from release_date (YYYY-MM-DD format)
+            local movie_year=""
+            if [[ "$movie_obj" == *'"release_date":'* ]]; then
+                movie_year=$(echo "$movie_obj" | sed -E 's/.*"release_date":"([0-9]{4}).*/\1/')
             fi
             
-            results+=("$movie_title|$movie_year")
-            ((i++))
-            [ $i -ge 5 ] && break
+            if [ -n "$movie_title" ]; then
+                results+=("$movie_title|$movie_year")
+                ((i++))
+                [ $i -ge 5 ] && break
+            fi
         fi
-    done < <(echo "$json" | grep -o '"title":"[^"]*"')
+    done < <(echo "$results_section" | grep -o '{[^}]*"title":"[^"]*"[^}]*}')
     
     # Return results as newline-separated
     if [ ${#results[@]} -gt 0 ]; then
@@ -1325,38 +1358,8 @@ main() {
         if [ "$ENABLE_IMDB_VERIFICATION" = "true" ]; then
             echo "Checking IMDb..."
             if ! check_imdb_match "$movie_title" "$movie_year" 2>&1 | grep -q "✓ IMDb Match Found"; then
-                # Get IMDb results if no exact match
-                local encoded
-                encoded=$(url_encode "$movie_title")
-                local first
-                first=$(printf '%s' "$encoded" | cut -c1 | tr '[:upper:]' '[:lower:]')
-                local imdb_url="https://v2.sg.media-imdb.com/suggestion/${first}/${encoded}.json"
-                local json
-                json=$(curl -s "$imdb_url" 2>/dev/null)
-                
-                if [ -n "$json" ]; then
-                    # Parse top 5 results from IMDb
-                    local i=0
-                    while IFS= read -r line; do
-                        if [[ $line == *'"l":"'* ]]; then
-                            local imdb_title
-                            imdb_title=$(echo "$line" | sed -E 's/.*"l":"([^"]*)".*/\1/')
-                            local imdb_year=""
-                            
-                            if [[ $line == *'"y":'* ]]; then
-                                imdb_year=$(echo "$line" | sed -E 's/.*"y":([0-9]{4}).*/\1/')
-                            fi
-                            
-                            if [ -z "$imdb_matches" ]; then
-                                imdb_matches="${imdb_title}|${imdb_year}"
-                            else
-                                imdb_matches="${imdb_matches}"$'\n'"${imdb_title}|${imdb_year}"
-                            fi
-                            ((i++))
-                            [ $i -ge 5 ] && break
-                        fi
-                    done < <(echo "$json" | grep -o '{[^}]*"l":"[^"]*"[^}]*}')
-                fi
+                # Get IMDb results if no exact match - use new search function
+                imdb_matches=$(search_imdb "$movie_title" "$movie_year")
             else
                 # Exact match found, continue without prompting
                 imdb_matches=""
