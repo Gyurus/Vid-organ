@@ -483,6 +483,135 @@ check_imdb_match() {
     return 1
 }
 
+# Function to verify and optionally correct movie title/year using IMDb
+# Returns corrected title and year in format "title|year"
+verify_and_correct_with_imdb() {
+    local title="$1"
+    local year="$2"
+    
+    # Skip if no curl
+    if ! command -v curl &> /dev/null; then
+        echo "${title}|${year}"
+        return 0
+    fi
+    
+    # Skip if no title
+    if [ -z "$title" ]; then
+        echo "${title}|${year}"
+        return 0
+    fi
+    
+    local encoded
+    encoded=$(url_encode "$title")
+    local first
+    first=$(printf '%s' "$encoded" | cut -c1 | tr '[:upper:]' '[:lower:]')
+    local imdb_url="https://v2.sg.media-imdb.com/suggestion/${first}/${encoded}.json"
+    
+    local json
+    json=$(curl -s "$imdb_url" 2>/dev/null)
+    
+    if [ -z "$json" ]; then
+        echo ""
+        echo "⚠ Could not verify on IMDb (network issue)" >&2
+        echo "${title}|${year}"
+        return 0
+    fi
+    
+    # Parse JSON response - get top 5 results
+    local results=()
+    local i=0
+    
+    # Extract title and year from JSON response
+    while IFS= read -r line; do
+        if [[ $line == *'"l":"'* ]]; then
+            local movie_title
+            movie_title=$(echo "$line" | sed -E 's/.*"l":"([^"]*)".*/\1/')
+            local movie_year=""
+            
+            # Try to extract year from same JSON object
+            if [[ $line == *'"y":'* ]]; then
+                movie_year=$(echo "$line" | sed -E 's/.*"y":([0-9]{4}).*/\1/')
+            fi
+            
+            results+=("$movie_title|$movie_year")
+            ((i++))
+            [ $i -ge 5 ] && break
+        fi
+    done < <(echo "$json" | grep -o '{[^}]*"l":"[^"]*"[^}]*}')
+    
+    # If no results found
+    if [ ${#results[@]} -eq 0 ]; then
+        echo ""
+        echo "⚠ No IMDb matches found for: $title $([ -n "$year" ] && echo "($year)" || echo "")" >&2
+        echo "${title}|${year}"
+        return 0
+    fi
+    
+    # Check if first result matches
+    local first_result="${results[0]}"
+    local found_title=$(echo "$first_result" | cut -d'|' -f1)
+    local found_year=$(echo "$first_result" | cut -d'|' -f2)
+    
+    local norm_input
+    norm_input=$(normalize_string "$title")
+    local norm_found
+    norm_found=$(normalize_string "$found_title")
+    
+    # Exact match - just confirm
+    if [ "$norm_input" = "$norm_found" ] && ([ -z "$year" ] || [ "$found_year" = "$year" ]); then
+        echo ""
+        echo "✓ IMDb Match Found:"
+        echo "  Title: $found_title"
+        [ -n "$found_year" ] && echo "  Year: $found_year"
+        echo ""
+        # Return the IMDb verified version
+        echo "${found_title}|${found_year}"
+        return 0
+    fi
+    
+    # No exact match - show suggestions and let user choose
+    echo ""
+    echo "⚠ IMDb Verification:"
+    echo "  Extracted from filename: $title $([ -n "$year" ] && echo "($year)" || echo "(no year)")"
+    echo ""
+    echo "  Top matches from IMDb:"
+    echo "  0. Keep current: $title $([ -n "$year" ] && echo "($year)" || echo "")"
+    
+    local counter=1
+    for result in "${results[@]}"; do
+        local rtitle=$(echo "$result" | cut -d'|' -f1)
+        local ryear=$(echo "$result" | cut -d'|' -f2)
+        echo "  $counter. $rtitle $([ -n "$ryear" ] && echo "($ryear)" || echo "")"
+        ((counter++))
+    done
+    echo ""
+    
+    # Ask user to select
+    local selection=""
+    while true; do
+        echo -n "Select correct option (0-$((${#results[@]}))): "
+        read -r selection
+        
+        # Validate selection
+        if [[ "$selection" =~ ^[0-9]+$ ]] && [ "$selection" -ge 0 ] && [ "$selection" -le "${#results[@]}" ]; then
+            break
+        else
+            echo "Invalid selection. Please enter a number between 0 and ${#results[@]}"
+        fi
+    done
+    
+    # Return selected option
+    if [ "$selection" -eq 0 ]; then
+        # Keep current
+        echo "${title}|${year}"
+    else
+        # Use selected IMDb result
+        local selected_index=$((selection - 1))
+        local selected_result="${results[$selected_index]}"
+        echo "$selected_result"
+    fi
+}
+
 # Function to get audio languages from file (returns detailed track info)
 get_audio_languages() {
     local file="$1"
@@ -1139,8 +1268,22 @@ main() {
             echo "Year: $movie_year"
         fi
 
-        # Verify title and year against IMDb/OMDb (warning only)
-        verify_title_year_with_imdb "$movie_title" "$movie_year" || true
+        # Verify title and year against IMDb and allow corrections
+        echo ""
+        echo "Verifying with IMDb..."
+        local corrected_info
+        corrected_info=$(verify_and_correct_with_imdb "$movie_title" "$movie_year")
+        movie_title=$(echo "$corrected_info" | cut -d'|' -f1)
+        movie_year=$(echo "$corrected_info" | cut -d'|' -f2)
+        
+        # Show final values if they changed
+        echo ""
+        echo "Final values:"
+        echo "  Title: $movie_title"
+        if [ -n "$movie_year" ]; then
+            echo "  Year: $movie_year"
+        fi
+        echo ""
 
         # Create subfolder name (sanitize for filesystem)
         local subfolder_name=""
