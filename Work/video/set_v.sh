@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # Simple Video Organizer and Language Setter
-# Version: 1.1
+# Version: 1.2
 # Interactive script to organize video files and set audio language metadata
+# Features: IMDb verification for movie titles and years
 
 # Color codes for output
 RED=''
