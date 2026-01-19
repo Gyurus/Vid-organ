@@ -13,7 +13,7 @@ BLUE=''
 NC=''
 
 # Script version
-SCRIPT_VERSION="1.5.1"
+SCRIPT_VERSION="1.2.0"
 SCRIPT_REPO="Gyurus/Vid-organ"
 SCRIPT_RAW_URL="https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"
 
@@ -560,6 +560,8 @@ verify_and_correct_with_imdb() {
         read -r selection
         
         # Validate selection
+        # Note: 0 = keep current (not from array), 1-N = use results[0] to results[N-1]
+        # So valid range is 0 to ${#results[@]} inclusive
         if [[ "$selection" =~ ^[0-9]+$ ]] && [ "$selection" -ge 0 ] && [ "$selection" -le "${#results[@]}" ]; then
             break
         else
@@ -572,7 +574,7 @@ verify_and_correct_with_imdb() {
         # Keep current
         echo "${title}|${year}"
     else
-        # Use selected IMDb result
+        # Use selected IMDb result (selection 1 = index 0, selection 2 = index 1, etc.)
         local selected_index=$((selection - 1))
         local selected_result="${results[$selected_index]}"
         echo "$selected_result"
@@ -1240,10 +1242,16 @@ main() {
         echo "Verifying with IMDb..."
         local corrected_info
         corrected_info=$(verify_and_correct_with_imdb "$movie_title" "$movie_year")
-        movie_title=$(echo "$corrected_info" | cut -d'|' -f1)
-        movie_year=$(echo "$corrected_info" | cut -d'|' -f2)
         
-        # Show final values if they changed
+        # Validate that corrected_info is not empty and contains expected format
+        if [ -n "$corrected_info" ] && [[ "$corrected_info" == *"|"* ]]; then
+            movie_title=$(echo "$corrected_info" | cut -d'|' -f1)
+            movie_year=$(echo "$corrected_info" | cut -d'|' -f2)
+        else
+            echo "Warning: IMDb verification returned unexpected result, using extracted values" >&2
+        fi
+        
+        # Show final values
         echo ""
         echo "Final values:"
         echo "  Title: $movie_title"
