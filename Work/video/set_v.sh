@@ -965,7 +965,7 @@ clean_language_tags_before_year() {
             # Remove ALL trailing language codes from before_year to get clean title
             # Keep removing underscores + language codes from the end
             local title_part="$before_year"
-            while [[ "$title_part" =~ _${lang_pattern}$ ]]; do
+            while [[ "$title_part" =~ _${LANG_PATTERN}$ ]]; do
                 title_part="${title_part%_*}"
             done
             
