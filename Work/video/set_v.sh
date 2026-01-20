@@ -602,9 +602,11 @@ prompt_user_for_title_selection() {
     local imdb_results="$3"   # newline-separated results
     local tmdb_results="$4"   # newline-separated results
     
-    echo ""
+    # Add visual spacing to ensure options are visible
+    printf '\n%.0s' {1..3}
+    
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "⚠  TITLE VERIFICATION"
+    echo "⚠  TITLE VERIFICATION - Please review options below"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "Extracted: $extracted_title $([ -n "$extracted_year" ] && echo "($extracted_year)" || echo "(no year)")"
     echo ""
@@ -656,6 +658,26 @@ prompt_user_for_title_selection() {
     echo "  [m] Enter title/year manually"
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    # If results are lengthy, pause to let user read them
+    local total_results=${#all_options[@]}
+    if [ "$total_results" -gt 5 ]; then
+        echo ""
+        echo -e "\033[1;33m⏸  Press ENTER to continue to selection...\033[0m"
+        read -r </dev/tty
+    fi
+    
+    # Display option summary reminder before input prompt
+    echo ""
+    echo "Available options:"
+    echo "  [0] - Use extracted: $extracted_title $([ -n "$extracted_year" ] && echo "($extracted_year)" || echo "(no year)")"
+    if [ "$total_results" -gt 0 ]; then
+        echo "  [1-$total_results] - Select from results above"
+    fi
+    echo "  [m] - Manual entry"
+    echo ""
+    echo -e "\033[2;37m(Scroll up if options are not visible)\033[0m"
+    echo ""
     
     # Prompt user for selection
     local choice
