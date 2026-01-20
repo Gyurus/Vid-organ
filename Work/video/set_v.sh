@@ -920,24 +920,26 @@ rename_subtitle_to_match_video() {
     fi
     
     local new_subtitle_name="${video_basename}${lang_suffix}.${subtitle_ext}"
-    local new_subtitle_path="${subtitle_dir}/${new_subtitle_name}"
     
-    # Only rename if different and target doesn't exist
-    if [ "$subtitle_file" != "$new_subtitle_path" ]; then
-        # Use get_unique_filepath to avoid overwriting
-        new_subtitle_path=$(get_unique_filepath "$new_subtitle_path")
-        if mv "$subtitle_file" "$new_subtitle_path" 2>/dev/null; then
-            echo "  Renamed subtitle to match video: $(basename "$new_subtitle_path")"
-            echo "$new_subtitle_path"
-            return 0
-        else
-            echo "  Warning: Could not rename subtitle: $(basename "$subtitle_file")"
-            echo "$subtitle_file"
-            return 1
-        fi
-    else
+    # Check if the subtitle name already matches the desired name
+    if [ "$subtitle_name" = "$new_subtitle_name" ]; then
+        # Already correctly named, no rename needed
         echo "$subtitle_file"
         return 0
+    fi
+    
+    local new_subtitle_path="${subtitle_dir}/${new_subtitle_name}"
+    
+    # Use get_unique_filepath to avoid overwriting existing files
+    new_subtitle_path=$(get_unique_filepath "$new_subtitle_path")
+    if mv "$subtitle_file" "$new_subtitle_path" 2>/dev/null; then
+        echo "  Renamed subtitle to match video: $(basename "$new_subtitle_path")"
+        echo "$new_subtitle_path"
+        return 0
+    else
+        echo "  Warning: Could not rename subtitle: $(basename "$subtitle_file")"
+        echo "$subtitle_file"
+        return 1
     fi
 }
 
