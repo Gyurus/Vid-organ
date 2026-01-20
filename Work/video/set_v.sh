@@ -12,15 +12,19 @@ BLUE=''
 NC=''
 
 # Script version
-SCRIPT_VERSION="1.5.1"
+SCRIPT_VERSION="1.5.2"
 SCRIPT_REPO="Gyurus/Vid-organ"
 SCRIPT_RAW_URL="https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"
 
 # Language code pattern for subtitle and video processing
 LANG_PATTERN="(eng|hun|ger|kor|fre|spa|ita|por|rus|jpn)"
 
-# Configuration file
-CONFIG_FILE="${0%/*}/set_v.ini"
+# Configuration file - check XDG config dir first, then script dir
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/video-organizer"
+CONFIG_FILE="${CONFIG_DIR}/set_v.ini"
+if [ ! -f "$CONFIG_FILE" ]; then
+    CONFIG_FILE="${0%/*}/set_v.ini"
+fi
 
 # Function to load settings from ini file
 load_config() {
