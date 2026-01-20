@@ -16,6 +16,9 @@ SCRIPT_VERSION="1.5.1"
 SCRIPT_REPO="Gyurus/Vid-organ"
 SCRIPT_RAW_URL="https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"
 
+# Language code pattern for subtitle and video processing
+LANG_PATTERN="(eng|hun|ger|kor|fre|spa|ita|por|rus|jpn)"
+
 # Configuration file
 CONFIG_FILE="${0%/*}/set_v.ini"
 
@@ -47,6 +50,9 @@ load_config() {
             enable_auto_update) ENABLE_AUTO_UPDATE="$value" ;;
             github_repo) GITHUB_REPO="$value" ;;
             github_raw_url) GITHUB_RAW_URL="$value" ;;
+            tmdb_api_key) TMDB_API_KEY="$value" ;;
+            enable_tmdb_verification) ENABLE_TMDB_VERIFICATION="$value" ;;
+            enable_imdb_verification) ENABLE_IMDB_VERIFICATION="$value" ;;
         esac
     done < "$CONFIG_FILE"
 }
@@ -139,6 +145,9 @@ DEFAULT_AUDIO_LANGUAGE=${DEFAULT_AUDIO_LANGUAGE:-"eng"}
 ENABLE_AUTO_UPDATE=${ENABLE_AUTO_UPDATE:-"true"}
 GITHUB_REPO=${GITHUB_REPO:-"Gyurus/Vid-organ"}
 GITHUB_RAW_URL=${GITHUB_RAW_URL:-"https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"}
+TMDB_API_KEY=${TMDB_API_KEY:-""}
+ENABLE_TMDB_VERIFICATION=${ENABLE_TMDB_VERIFICATION:-"true"}
+ENABLE_IMDB_VERIFICATION=${ENABLE_IMDB_VERIFICATION:-"true"}
 
 # Function to get user choice
 get_user_choice() {
@@ -385,8 +394,8 @@ verify_title_year_with_imdb() {
         fi
     }
 
-# Function to check IMDb for movie matches and suggest corrections
-check_imdb_match() {
+# Function to search IMDb for movie matches and return results
+search_imdb() {
     local title="$1"
     local year="$2"
     
@@ -410,12 +419,10 @@ check_imdb_match() {
     json=$(curl -s "$imdb_url" 2>/dev/null)
     
     if [ -z "$json" ]; then
-        echo ""
-        echo "⚠ Could not verify on IMDb (network issue)" >&2
         return 1
     fi
     
-    # Parse JSON response - get top 3 results
+    # Parse JSON response - get top 5 results
     local results=()
     local i=0
     
@@ -437,12 +444,37 @@ check_imdb_match() {
         fi
     done < <(echo "$json" | grep -o '{[^}]*"l":"[^"]*"[^}]*}')
     
-    # If no results found
-    if [ ${#results[@]} -eq 0 ]; then
+    # Return results as newline-separated
+    if [ ${#results[@]} -gt 0 ]; then
+        printf '%s\n' "${results[@]}"
+        return 0
+    fi
+    
+    return 1
+}
+
+# Function to check IMDb for movie matches and suggest corrections
+check_imdb_match() {
+    local title="$1"
+    local year="$2"
+    
+    # Get IMDb results
+    local imdb_results
+    imdb_results=$(search_imdb "$title" "$year")
+    
+    if [ -z "$imdb_results" ]; then
         echo ""
-        echo "⚠ No IMDb matches found for: $title ($year)" >&2
+        echo "⚠ Could not verify on IMDb (network issue or no matches)" >&2
         return 1
     fi
+    
+    # Parse results
+    local results=()
+    while IFS= read -r result; do
+        if [ -n "$result" ]; then
+            results+=("$result")
+        fi
+    done <<< "$imdb_results"
     
     # Check if first result matches
     local first_result="${results[0]}"
@@ -481,6 +513,209 @@ check_imdb_match() {
     echo ""
     
     return 1
+}
+
+# Function to search TMDb for movie matches
+search_tmdb() {
+    local title="$1"
+    local year="$2"
+    
+    # Skip if TMDb disabled or no API key
+    if [ "$ENABLE_TMDB_VERIFICATION" != "true" ] || [ -z "$TMDB_API_KEY" ]; then
+        return 1
+    fi
+    
+    # Skip if no curl
+    if ! command -v curl &> /dev/null; then
+        return 1
+    fi
+    
+    # Skip if no title
+    if [ -z "$title" ]; then
+        return 1
+    fi
+    
+    local encoded
+    encoded=$(url_encode "$title")
+    local tmdb_url="https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encoded}"
+    
+    # Add year parameter if provided
+    if [ -n "$year" ]; then
+        tmdb_url="${tmdb_url}&year=${year}"
+    fi
+    
+    local json
+    json=$(curl -s "$tmdb_url" 2>/dev/null)
+    
+    if [ -z "$json" ]; then
+        return 1
+    fi
+    
+    # Parse JSON response - extract results array and process movies
+    # Each movie has: "title":"Movie Name","release_date":"YYYY-MM-DD"
+    # Using a more efficient single-pass approach
+    local results_section
+    results_section=$(echo "$json" | grep -o '"results":\[[^]]*\]' | head -1)
+    
+    if [ -z "$results_section" ]; then
+        return 1
+    fi
+    
+    # Extract title and year pairs from the results section
+    local i=0
+    local results=()
+    
+    # Process each movie object in the results array
+    while IFS= read -r movie_obj; do
+        if [ -n "$movie_obj" ]; then
+            # Extract title
+            local movie_title
+            movie_title=$(echo "$movie_obj" | sed -E 's/.*"title":"([^"]*).*/\1/')
+            
+            # Extract year from release_date (YYYY-MM-DD format)
+            local movie_year=""
+            if [[ "$movie_obj" == *'"release_date":'* ]]; then
+                movie_year=$(echo "$movie_obj" | sed -E 's/.*"release_date":"([0-9]{4}).*/\1/')
+            fi
+            
+            if [ -n "$movie_title" ]; then
+                results+=("$movie_title|$movie_year")
+                ((i++))
+                [ $i -ge 5 ] && break
+            fi
+        fi
+    done < <(echo "$results_section" | grep -o '{[^}]*"title":"[^"]*"[^}]*}')
+    
+    # Return results as newline-separated
+    if [ ${#results[@]} -gt 0 ]; then
+        printf '%s\n' "${results[@]}"
+        return 0
+    fi
+    
+    return 1
+}
+
+# Function to prompt user to select from TMDb and IMDb matches
+prompt_user_for_title_selection() {
+    local extracted_title="$1"
+    local extracted_year="$2"
+    local imdb_results="$3"   # newline-separated results
+    local tmdb_results="$4"   # newline-separated results
+    
+    # Add visual spacing to ensure options are visible
+    printf '\n%.0s' {1..3}
+    
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "⚠  TITLE VERIFICATION - Please review options below"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Extracted: $extracted_title $([ -n "$extracted_year" ] && echo "($extracted_year)" || echo "(no year)")"
+    echo ""
+    
+    # Combine and display results from both APIs
+    local all_options=()
+    local counter=1
+    
+    # Add IMDb results if available
+    if [ -n "$imdb_results" ]; then
+        echo "From IMDb:"
+        while IFS= read -r result; do
+            if [ -n "$result" ]; then
+                all_options+=("imdb|$result")
+                local rtitle=$(echo "$result" | cut -d'|' -f1)
+                local ryear=$(echo "$result" | cut -d'|' -f2)
+                echo "  [$counter] $rtitle $([ -n "$ryear" ] && echo "($ryear)" || echo "")"
+                ((counter++))
+            fi
+        done <<< "$imdb_results"
+        echo ""
+    fi
+    
+    # Add TMDb results if available
+    if [ -n "$tmdb_results" ]; then
+        echo "From TMDb:"
+        while IFS= read -r result; do
+            if [ -n "$result" ]; then
+                all_options+=("tmdb|$result")
+                local rtitle=$(echo "$result" | cut -d'|' -f1)
+                local ryear=$(echo "$result" | cut -d'|' -f2)
+                echo "  [$counter] $rtitle $([ -n "$ryear" ] && echo "($ryear)" || echo "")"
+                ((counter++))
+            fi
+        done <<< "$tmdb_results"
+        echo ""
+    fi
+    
+    # If no results from either API, use extracted values
+    if [ ${#all_options[@]} -eq 0 ]; then
+        echo "No matches found from IMDb or TMDb"
+        echo "Using extracted values"
+        echo "$extracted_title|$extracted_year"
+        return 0
+    fi
+    
+    # Add option to use extracted values as-is
+    echo "  [0] Use extracted values: $extracted_title $([ -n "$extracted_year" ] && echo "($extracted_year)" || echo "")"
+    echo "  [m] Enter title/year manually"
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    # If results are lengthy, pause to let user read them
+    local total_results=${#all_options[@]}
+    if [ "$total_results" -gt 5 ]; then
+        echo ""
+        echo -e "\033[1;33m⏸  Press ENTER to continue to selection...\033[0m"
+        read -r </dev/tty
+    fi
+    
+    # Display option summary reminder before input prompt
+    echo ""
+    echo "Available options:"
+    echo "  [0] - Use extracted: $extracted_title $([ -n "$extracted_year" ] && echo "($extracted_year)" || echo "(no year)")"
+    if [ "$total_results" -gt 0 ]; then
+        echo "  [1-$total_results] - Select from results above"
+    fi
+    echo "  [m] - Manual entry"
+    echo ""
+    echo -e "\033[2;37m(Scroll up if options are not visible)\033[0m"
+    echo ""
+    
+    # Prompt user for selection
+    local choice
+    while true; do
+        choice=$(get_user_choice "Select correct match (0-$((counter-1)) or 'm' for manual)" "0")
+        
+        # Handle manual entry
+        if [[ "$choice" == "m" || "$choice" == "M" ]]; then
+            echo ""
+            echo "Enter movie details manually:"
+            local manual_title
+            manual_title=$(get_user_choice "Title:" "$extracted_title")
+            local manual_year
+            manual_year=$(get_user_choice "Year:" "$extracted_year")
+            echo "$manual_title|$manual_year"
+            return 0
+        fi
+        
+        # Validate numeric choice
+        if [[ "$choice" =~ ^[0-9]+$ ]]; then
+            if [ "$choice" -eq 0 ]; then
+                # Use extracted values
+                echo "$extracted_title|$extracted_year"
+                return 0
+            elif [ "$choice" -ge 1 ] && [ "$choice" -lt "$counter" ]; then
+                # Use selected match
+                local selected="${all_options[$((choice-1))]}"
+                local source=$(echo "$selected" | cut -d'|' -f1)
+                local title=$(echo "$selected" | cut -d'|' -f2)
+                local year=$(echo "$selected" | cut -d'|' -f3)
+                echo "✓ Selected from $source: $title ($year)"
+                echo "$title|$year"
+                return 0
+            fi
+        fi
+        
+        echo "Invalid choice. Please enter a number between 0 and $((counter-1)), or 'm' for manual entry" >&2
+    done
 }
 
 # Function to get audio languages from file (returns detailed track info)
@@ -622,22 +857,113 @@ set_audio_language() {
 find_subtitle_files() {
     local source_dir="$1"
     local movie_title="$2"
+    local original_video_file="${3:-}"  # Optional: original video file path
+    
+    # Track found subtitles to avoid duplicates
+    local -A found_subtitles
+    
+    # Get the directory containing the video file if provided
+    local video_dir=""
+    if [ -n "$original_video_file" ] && [ -f "$original_video_file" ]; then
+        video_dir=$(dirname "$original_video_file")
+    fi
+    
+    # Strategy 1: Find subtitles in the same directory as the video
+    if [ -n "$video_dir" ] && [ -d "$video_dir" ]; then
+        while IFS= read -r -d '' sub_file; do
+            if [ -f "$sub_file" ]; then
+                local sub_path=$(realpath "$sub_file" 2>/dev/null || echo "$sub_file")
+                if [ -z "${found_subtitles[$sub_path]}" ]; then
+                    found_subtitles[$sub_path]=1
+                    echo "$sub_file"
+                fi
+            fi
+        done < <(find "$video_dir" -maxdepth 1 -type f \( -iname "*.srt" -o -iname "*.sub" -o -iname "*.ass" -o -iname "*.ssa" -o -iname "*.vtt" -o -iname "*.smi" \) -print0 2>/dev/null)
+        
+        # Strategy 2: Find subtitles in common subtitle subfolders
+        for subfolder in "Sub" "Subs" "Subtitle" "Subtitles"; do
+            local sub_path="${video_dir}/${subfolder}"
+            if [ -d "$sub_path" ]; then
+                while IFS= read -r -d '' sub_file; do
+                    if [ -f "$sub_file" ]; then
+                        local sub_path=$(realpath "$sub_file" 2>/dev/null || echo "$sub_file")
+                        if [ -z "${found_subtitles[$sub_path]}" ]; then
+                            found_subtitles[$sub_path]=1
+                            echo "$sub_file"
+                        fi
+                    fi
+                done < <(find "$sub_path" -type f \( -iname "*.srt" -o -iname "*.sub" -o -iname "*.ass" -o -iname "*.ssa" -o -iname "*.vtt" -o -iname "*.smi" \) -print0 2>/dev/null)
+            fi
+        done
+    fi
+    
+    # Strategy 3: If still no results, try fuzzy matching based on normalized names (fallback)
+    # Only search if we haven't found any subtitles yet
+    if [ ${#found_subtitles[@]} -eq 0 ]; then
+        # Clean title for matching
+        local clean_title
+        clean_title=$(echo "$movie_title" | sed 's/[^a-zA-Z0-9]//g' | tr '[:upper:]' '[:lower:]')
+        
+        # Find subtitle files recursively in source directory
+        while IFS= read -r -d '' sub_file; do
+            local filename=$(basename "$sub_file")
+            local base_name="${filename%.*}"
+            local clean_base=$(echo "$base_name" | sed 's/[^a-zA-Z0-9]//g' | tr '[:upper:]' '[:lower:]')
+            
+            # Check if subtitle filename contains the movie title
+            if [[ "$clean_base" == *"$clean_title"* ]]; then
+                local sub_path=$(realpath "$sub_file" 2>/dev/null || echo "$sub_file")
+                if [ -z "${found_subtitles[$sub_path]}" ]; then
+                    found_subtitles[$sub_path]=1
+                    echo "$sub_file"
+                fi
+            fi
+        done < <(find "$source_dir" -type f \( -iname "*.srt" -o -iname "*.sub" -o -iname "*.ass" -o -iname "*.ssa" -o -iname "*.vtt" -o -iname "*.smi" \) -print0 2>/dev/null)
+    fi
+}
 
-    # Clean title for matching
-    local clean_title
-    clean_title=$(echo "$movie_title" | sed 's/[^a-zA-Z0-9]//g' | tr '[:upper:]' '[:lower:]')
-
-    # Find subtitle files recursively in source directory
-    find "$source_dir" -type f \( -iname "*.srt" -o -iname "*.sub" -o -iname "*.ass" -o -iname "*.ssa" -o -iname "*.vtt" -o -iname "*.smi" \) -print0 2>/dev/null | while IFS= read -r -d '' sub_file; do
-        local filename=$(basename "$sub_file")
-        local base_name="${filename%.*}"
-        local clean_base=$(echo "$base_name" | sed 's/[^a-zA-Z0-9]//g' | tr '[:upper:]' '[:lower:]')
-
-        # Check if subtitle filename contains the movie title
-        if [[ "$clean_base" == *"$clean_title"* ]]; then
-            echo "$sub_file"
-        fi
-    done
+# Function to rename subtitle to match video filename
+rename_subtitle_to_match_video() {
+    local subtitle_file="$1"
+    local video_file="$2"
+    
+    if [ ! -f "$subtitle_file" ] || [ ! -f "$video_file" ]; then
+        return 1
+    fi
+    
+    local video_basename=$(basename "$video_file" | sed 's/\.[^.]*$//')
+    local subtitle_ext="${subtitle_file##*.}"
+    local subtitle_dir=$(dirname "$subtitle_file")
+    local subtitle_name=$(basename "$subtitle_file")
+    
+    # Extract language code from subtitle filename if present (e.g., .eng.srt, .hun.srt)
+    local lang_suffix=""
+    if [[ "$subtitle_name" =~ \.${LANG_PATTERN}\.[^.]+$ ]]; then
+        lang_suffix=".${BASH_REMATCH[1]}"
+    fi
+    
+    local new_subtitle_name="${video_basename}${lang_suffix}.${subtitle_ext}"
+    
+    # Check if the subtitle name already matches the desired name
+    if [ "$subtitle_name" = "$new_subtitle_name" ]; then
+        # Already correctly named, no rename needed
+        echo "$subtitle_file"
+        return 0
+    fi
+    
+    local new_subtitle_path="${subtitle_dir}/${new_subtitle_name}"
+    
+    # Use get_unique_filepath to avoid overwriting existing files
+    new_subtitle_path=$(get_unique_filepath "$new_subtitle_path")
+    if mv "$subtitle_file" "$new_subtitle_path" 2>/dev/null; then
+        echo "  Renamed subtitle to match video: $(basename "$new_subtitle_path")" >&2
+        echo "$new_subtitle_path"
+        return 0
+    else
+        echo "  Warning: Could not rename subtitle: $(basename "$subtitle_file")" >&2
+        echo "$subtitle_file"
+        return 1
+    fi
 }
 
 # Function to clean language tags from before year in filename
@@ -648,7 +974,6 @@ clean_language_tags_before_year() {
     local base_name="${filename%.*}"
     local extension="${filename##*.}"
     local langs_part
-    local lang_pattern="(eng|hun|ger|kor|fre|spa|ita|por|rus|jpn)"
     
     # Pattern: Find the year (rightmost 4 digits after underscore)
     if [[ "$base_name" =~ ^(.+)_([0-9]{4})$ ]]; then
@@ -656,13 +981,13 @@ clean_language_tags_before_year() {
         local year="${BASH_REMATCH[2]}"
         
         # Now check if before_year ends with language codes
-        if [[ "$before_year" =~ _(${lang_pattern}(_[a-z]{3})*)$ ]]; then
+        if [[ "$before_year" =~ _(${LANG_PATTERN}(_[a-z]{3})*)$ ]]; then
             langs_part="${BASH_REMATCH[1]}"
             
             # Remove ALL trailing language codes from before_year to get clean title
             # Keep removing underscores + language codes from the end
             local title_part="$before_year"
-            while [[ "$title_part" =~ _${lang_pattern}$ ]]; do
+            while [[ "$title_part" =~ _${LANG_PATTERN}$ ]]; do
                 title_part="${title_part%_*}"
             done
             
@@ -1139,8 +1464,46 @@ main() {
             echo "Year: $movie_year"
         fi
 
-        # Verify title and year against IMDb/OMDb (warning only)
-        verify_title_year_with_imdb "$movie_title" "$movie_year" || true
+        # Interactive verification with both IMDb and TMDb
+        echo ""
+        echo "Verifying title and year with online databases..."
+        
+        # Search IMDb for matches
+        local imdb_matches=""
+        if [ "$ENABLE_IMDB_VERIFICATION" = "true" ]; then
+            echo "Checking IMDb..."
+            if ! check_imdb_match "$movie_title" "$movie_year" 2>&1 | grep -q "✓ IMDb Match Found"; then
+                # Get IMDb results if no exact match - use new search function
+                imdb_matches=$(search_imdb "$movie_title" "$movie_year")
+            else
+                # Exact match found, continue without prompting
+                imdb_matches=""
+            fi
+        fi
+        
+        # Search TMDb for matches
+        local tmdb_matches=""
+        if [ "$ENABLE_TMDB_VERIFICATION" = "true" ] && [ -n "$TMDB_API_KEY" ]; then
+            echo "Checking TMDb..."
+            tmdb_matches=$(search_tmdb "$movie_title" "$movie_year")
+        fi
+        
+        # Check if we need to prompt user for verification
+        if [ -n "$imdb_matches" ] || [ -n "$tmdb_matches" ]; then
+            # Multiple matches found - prompt user to select
+            local verified_info
+            verified_info=$(prompt_user_for_title_selection "$movie_title" "$movie_year" "$imdb_matches" "$tmdb_matches")
+            
+            # Update movie_title and movie_year with user selection
+            movie_title=$(echo "$verified_info" | cut -d'|' -f1)
+            movie_year=$(echo "$verified_info" | cut -d'|' -f2)
+            
+            echo ""
+            echo "Using verified title: $movie_title $([ -n "$movie_year" ] && echo "($movie_year)" || echo "")"
+        else
+            echo "✓ Title/year verified successfully"
+        fi
+        echo ""
 
         # Create subfolder name (sanitize for filesystem)
         local subfolder_name=""
@@ -1174,6 +1537,7 @@ main() {
 
         # Move video file to subfolder
         echo "Moving video file..."
+        local original_video_file="$file"  # Store original path before moving
         local new_video_path
         local target_path="${subfolder_path}/$(basename "$file")"
         new_video_path=$(get_unique_filepath "$target_path")
@@ -1194,6 +1558,7 @@ main() {
         # Find and move subtitle files (with duplicate handling)
         echo "Searching for subtitle files..."
         local subtitle_count=0
+        local -a moved_subtitles=()  # Array to track moved subtitle paths
         while IFS= read -r subtitle_file; do
             if [ -z "$subtitle_file" ]; then
                 continue
@@ -1215,11 +1580,12 @@ main() {
             
             if mv "$subtitle_file" "$new_subtitle_path" 2>/dev/null; then
                 echo "  Moved: $(basename "$new_subtitle_path")"
+                moved_subtitles+=("$new_subtitle_path")  # Track moved subtitle
                 ((subtitle_count++))
             else
                 echo "  Failed to move: $subtitle_name"
             fi
-        done < <(find_subtitle_files "$source_folder" "$movie_title")
+        done < <(find_subtitle_files "$source_folder" "$movie_title" "$original_video_file")
 
         if [ "$subtitle_count" -eq 0 ]; then
             echo "No subtitle files found"
@@ -1398,6 +1764,26 @@ main() {
                 else
                     echo "Failed to rename file"
                 fi
+            fi
+        fi
+
+        # Rename subtitle files to match the final video filename
+        if [ ${#moved_subtitles[@]} -gt 0 ]; then
+            echo "Renaming subtitle files to match video..."
+            local renamed_count=0
+            for i in "${!moved_subtitles[@]}"; do
+                local subtitle_path="${moved_subtitles[$i]}"
+                if [ -f "$subtitle_path" ]; then
+                    local renamed_path
+                    renamed_path=$(rename_subtitle_to_match_video "$subtitle_path" "$file")
+                    if [ $? -eq 0 ]; then
+                        moved_subtitles[$i]="$renamed_path"
+                        ((renamed_count++))
+                    fi
+                fi
+            done
+            if [ $renamed_count -gt 0 ]; then
+                echo "Renamed $renamed_count subtitle file(s) to match video"
             fi
         fi
 
