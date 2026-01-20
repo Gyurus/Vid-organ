@@ -832,22 +832,113 @@ set_audio_language() {
 find_subtitle_files() {
     local source_dir="$1"
     local movie_title="$2"
+    local original_video_file="${3:-}"  # Optional: original video file path
+    
+    # Track found subtitles to avoid duplicates
+    local -A found_subtitles
+    
+    # Get the directory containing the video file if provided
+    local video_dir=""
+    local video_basename=""
+    if [ -n "$original_video_file" ] && [ -f "$original_video_file" ]; then
+        video_dir=$(dirname "$original_video_file")
+        video_basename=$(basename "$original_video_file" | sed 's/\.[^.]*$//')
+    fi
+    
+    # Strategy 1: Find subtitles in the same directory as the video
+    if [ -n "$video_dir" ] && [ -d "$video_dir" ]; then
+        while IFS= read -r -d '' sub_file; do
+            if [ -f "$sub_file" ]; then
+                local sub_path=$(realpath "$sub_file" 2>/dev/null || echo "$sub_file")
+                if [ -z "${found_subtitles[$sub_path]}" ]; then
+                    found_subtitles[$sub_path]=1
+                    echo "$sub_file"
+                fi
+            fi
+        done < <(find "$video_dir" -maxdepth 1 -type f \( -iname "*.srt" -o -iname "*.sub" -o -iname "*.ass" -o -iname "*.ssa" -o -iname "*.vtt" -o -iname "*.smi" \) -print0 2>/dev/null)
+        
+        # Strategy 2: Find subtitles in common subtitle subfolders
+        for subfolder in "Sub" "Subs" "Subtitle" "Subtitles"; do
+            local sub_path="${video_dir}/${subfolder}"
+            if [ -d "$sub_path" ]; then
+                while IFS= read -r -d '' sub_file; do
+                    if [ -f "$sub_file" ]; then
+                        local sub_path=$(realpath "$sub_file" 2>/dev/null || echo "$sub_file")
+                        if [ -z "${found_subtitles[$sub_path]}" ]; then
+                            found_subtitles[$sub_path]=1
+                            echo "$sub_file"
+                        fi
+                    fi
+                done < <(find "$sub_path" -type f \( -iname "*.srt" -o -iname "*.sub" -o -iname "*.ass" -o -iname "*.ssa" -o -iname "*.vtt" -o -iname "*.smi" \) -print0 2>/dev/null)
+            fi
+        done
+    fi
+    
+    # Strategy 3: If still no results, try fuzzy matching based on normalized names (fallback)
+    # Only search if we haven't found any subtitles yet
+    if [ ${#found_subtitles[@]} -eq 0 ]; then
+        # Clean title for matching
+        local clean_title
+        clean_title=$(echo "$movie_title" | sed 's/[^a-zA-Z0-9]//g' | tr '[:upper:]' '[:lower:]')
+        
+        # Find subtitle files recursively in source directory
+        while IFS= read -r -d '' sub_file; do
+            local filename=$(basename "$sub_file")
+            local base_name="${filename%.*}"
+            local clean_base=$(echo "$base_name" | sed 's/[^a-zA-Z0-9]//g' | tr '[:upper:]' '[:lower:]')
+            
+            # Check if subtitle filename contains the movie title
+            if [[ "$clean_base" == *"$clean_title"* ]]; then
+                local sub_path=$(realpath "$sub_file" 2>/dev/null || echo "$sub_file")
+                if [ -z "${found_subtitles[$sub_path]}" ]; then
+                    found_subtitles[$sub_path]=1
+                    echo "$sub_file"
+                fi
+            fi
+        done < <(find "$source_dir" -type f \( -iname "*.srt" -o -iname "*.sub" -o -iname "*.ass" -o -iname "*.ssa" -o -iname "*.vtt" -o -iname "*.smi" \) -print0 2>/dev/null)
+    fi
+}
 
-    # Clean title for matching
-    local clean_title
-    clean_title=$(echo "$movie_title" | sed 's/[^a-zA-Z0-9]//g' | tr '[:upper:]' '[:lower:]')
-
-    # Find subtitle files recursively in source directory
-    find "$source_dir" -type f \( -iname "*.srt" -o -iname "*.sub" -o -iname "*.ass" -o -iname "*.ssa" -o -iname "*.vtt" -o -iname "*.smi" \) -print0 2>/dev/null | while IFS= read -r -d '' sub_file; do
-        local filename=$(basename "$sub_file")
-        local base_name="${filename%.*}"
-        local clean_base=$(echo "$base_name" | sed 's/[^a-zA-Z0-9]//g' | tr '[:upper:]' '[:lower:]')
-
-        # Check if subtitle filename contains the movie title
-        if [[ "$clean_base" == *"$clean_title"* ]]; then
-            echo "$sub_file"
+# Function to rename subtitle to match video filename
+rename_subtitle_to_match_video() {
+    local subtitle_file="$1"
+    local video_file="$2"
+    
+    if [ ! -f "$subtitle_file" ] || [ ! -f "$video_file" ]; then
+        return 1
+    fi
+    
+    local video_basename=$(basename "$video_file" | sed 's/\.[^.]*$//')
+    local subtitle_ext="${subtitle_file##*.}"
+    local subtitle_dir=$(dirname "$subtitle_file")
+    local subtitle_name=$(basename "$subtitle_file")
+    
+    # Extract language code from subtitle filename if present (e.g., .eng.srt, .hun.srt)
+    local lang_suffix=""
+    if [[ "$subtitle_name" =~ \.(eng|hun|ger|kor|fre|spa|ita|por|rus|jpn)\.[^.]+$ ]]; then
+        lang_suffix=".${BASH_REMATCH[1]}"
+    fi
+    
+    local new_subtitle_name="${video_basename}${lang_suffix}.${subtitle_ext}"
+    local new_subtitle_path="${subtitle_dir}/${new_subtitle_name}"
+    
+    # Only rename if different and target doesn't exist
+    if [ "$subtitle_file" != "$new_subtitle_path" ]; then
+        # Use get_unique_filepath to avoid overwriting
+        new_subtitle_path=$(get_unique_filepath "$new_subtitle_path")
+        if mv "$subtitle_file" "$new_subtitle_path" 2>/dev/null; then
+            echo "  Renamed subtitle to match video: $(basename "$new_subtitle_path")"
+            echo "$new_subtitle_path"
+            return 0
+        else
+            echo "  Warning: Could not rename subtitle: $(basename "$subtitle_file")"
+            echo "$subtitle_file"
+            return 1
         fi
-    done
+    else
+        echo "$subtitle_file"
+        return 0
+    fi
 }
 
 # Function to clean language tags from before year in filename
@@ -1422,6 +1513,7 @@ main() {
 
         # Move video file to subfolder
         echo "Moving video file..."
+        local original_video_file="$file"  # Store original path before moving
         local new_video_path
         local target_path="${subfolder_path}/$(basename "$file")"
         new_video_path=$(get_unique_filepath "$target_path")
@@ -1442,6 +1534,7 @@ main() {
         # Find and move subtitle files (with duplicate handling)
         echo "Searching for subtitle files..."
         local subtitle_count=0
+        local -a moved_subtitles=()  # Array to track moved subtitle paths
         while IFS= read -r subtitle_file; do
             if [ -z "$subtitle_file" ]; then
                 continue
@@ -1463,11 +1556,12 @@ main() {
             
             if mv "$subtitle_file" "$new_subtitle_path" 2>/dev/null; then
                 echo "  Moved: $(basename "$new_subtitle_path")"
+                moved_subtitles+=("$new_subtitle_path")  # Track moved subtitle
                 ((subtitle_count++))
             else
                 echo "  Failed to move: $subtitle_name"
             fi
-        done < <(find_subtitle_files "$source_folder" "$movie_title")
+        done < <(find_subtitle_files "$source_folder" "$movie_title" "$original_video_file")
 
         if [ "$subtitle_count" -eq 0 ]; then
             echo "No subtitle files found"
@@ -1646,6 +1740,26 @@ main() {
                 else
                     echo "Failed to rename file"
                 fi
+            fi
+        fi
+
+        # Rename subtitle files to match the final video filename
+        if [ ${#moved_subtitles[@]} -gt 0 ]; then
+            echo "Renaming subtitle files to match video..."
+            local renamed_count=0
+            for i in "${!moved_subtitles[@]}"; do
+                local subtitle_path="${moved_subtitles[$i]}"
+                if [ -f "$subtitle_path" ]; then
+                    local renamed_path
+                    renamed_path=$(rename_subtitle_to_match_video "$subtitle_path" "$file")
+                    if [ $? -eq 0 ]; then
+                        moved_subtitles[$i]="$renamed_path"
+                        ((renamed_count++))
+                    fi
+                fi
+            done
+            if [ $renamed_count -gt 0 ]; then
+                echo "Renamed $renamed_count subtitle file(s) to match video"
             fi
         fi
 
