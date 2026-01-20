@@ -933,11 +933,11 @@ rename_subtitle_to_match_video() {
     # Use get_unique_filepath to avoid overwriting existing files
     new_subtitle_path=$(get_unique_filepath "$new_subtitle_path")
     if mv "$subtitle_file" "$new_subtitle_path" 2>/dev/null; then
-        echo "  Renamed subtitle to match video: $(basename "$new_subtitle_path")"
+        echo "  Renamed subtitle to match video: $(basename "$new_subtitle_path")" >&2
         echo "$new_subtitle_path"
         return 0
     else
-        echo "  Warning: Could not rename subtitle: $(basename "$subtitle_file")"
+        echo "  Warning: Could not rename subtitle: $(basename "$subtitle_file")" >&2
         echo "$subtitle_file"
         return 1
     fi
