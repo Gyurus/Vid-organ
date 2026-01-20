@@ -149,7 +149,7 @@ install_config() {
     fi
     
     # Install config
-    if chmod 644 "$temp_file" && mv "$temp_file" "$config_path"; then
+    if chmod 600 "$temp_file" && mv "$temp_file" "$config_path"; then
         print_status "$CONFIG_NAME installed to: $config_path"
         return 0
     else
@@ -168,6 +168,26 @@ setup_path() {
         return 0
     fi
     
+    # Try to automatically add to ~/.bashrc if it exists
+    local bashrc="${HOME}/.bashrc"
+    local path_line="export PATH=\"${INSTALL_DIR}:\$PATH\""
+    
+    if [ -f "$bashrc" ]; then
+        if ! grep -q "$INSTALL_DIR" "$bashrc"; then
+            print_info "Adding $INSTALL_DIR to PATH in ~/.bashrc..."
+            echo "" >> "$bashrc"
+            echo "# Added by Video Organizer installer" >> "$bashrc"
+            echo "$path_line" >> "$bashrc"
+            print_status "PATH updated in ~/.bashrc"
+            print_info "Run 'source ~/.bashrc' or restart your shell to use set_v.sh"
+            return 0
+        else
+            print_status "$INSTALL_DIR already configured in ~/.bashrc"
+            return 0
+        fi
+    fi
+    
+    # Fallback: manual instructions
     print_warning "Add $INSTALL_DIR to your PATH to use 'set_v.sh' from anywhere"
     echo ""
     echo "Add one of the following to your shell configuration file:"
