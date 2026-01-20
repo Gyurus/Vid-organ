@@ -16,6 +16,9 @@ SCRIPT_VERSION="1.5.1"
 SCRIPT_REPO="Gyurus/Vid-organ"
 SCRIPT_RAW_URL="https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"
 
+# Language code pattern for subtitle and video processing
+LANG_PATTERN="(eng|hun|ger|kor|fre|spa|ita|por|rus|jpn)"
+
 # Configuration file
 CONFIG_FILE="${0%/*}/set_v.ini"
 
@@ -839,10 +842,8 @@ find_subtitle_files() {
     
     # Get the directory containing the video file if provided
     local video_dir=""
-    local video_basename=""
     if [ -n "$original_video_file" ] && [ -f "$original_video_file" ]; then
         video_dir=$(dirname "$original_video_file")
-        video_basename=$(basename "$original_video_file" | sed 's/\.[^.]*$//')
     fi
     
     # Strategy 1: Find subtitles in the same directory as the video
@@ -915,7 +916,7 @@ rename_subtitle_to_match_video() {
     
     # Extract language code from subtitle filename if present (e.g., .eng.srt, .hun.srt)
     local lang_suffix=""
-    if [[ "$subtitle_name" =~ \.(eng|hun|ger|kor|fre|spa|ita|por|rus|jpn)\.[^.]+$ ]]; then
+    if [[ "$subtitle_name" =~ \.${LANG_PATTERN}\.[^.]+$ ]]; then
         lang_suffix=".${BASH_REMATCH[1]}"
     fi
     
@@ -951,7 +952,6 @@ clean_language_tags_before_year() {
     local base_name="${filename%.*}"
     local extension="${filename##*.}"
     local langs_part
-    local lang_pattern="(eng|hun|ger|kor|fre|spa|ita|por|rus|jpn)"
     
     # Pattern: Find the year (rightmost 4 digits after underscore)
     if [[ "$base_name" =~ ^(.+)_([0-9]{4})$ ]]; then
@@ -959,7 +959,7 @@ clean_language_tags_before_year() {
         local year="${BASH_REMATCH[2]}"
         
         # Now check if before_year ends with language codes
-        if [[ "$before_year" =~ _(${lang_pattern}(_[a-z]{3})*)$ ]]; then
+        if [[ "$before_year" =~ _(${LANG_PATTERN}(_[a-z]{3})*)$ ]]; then
             langs_part="${BASH_REMATCH[1]}"
             
             # Remove ALL trailing language codes from before_year to get clean title
