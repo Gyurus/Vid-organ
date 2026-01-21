@@ -11,6 +11,39 @@ A comprehensive bash script for organizing and managing video files with automat
 - 🔄 **Auto-Update** - Automatic GitHub-based update detection with true auto-download
 - 🎨 **Modern UI** - 256-color palette with visual feedback and clear status indicators
 - 🛡️ **Safety Features** - Protects script and INI file from accidental deletion
+- 🌐 **API Verification** - Verify movie titles and years using multiple online databases
+
+## API Verification
+
+The script uses multiple movie database APIs for title and year verification:
+
+### Primary API: TMDB (The Movie Database)
+- **Recommended** - Most comprehensive movie data
+- **Free API key** required from [TMDB](https://www.themoviedb.org/settings/api)
+- Best reliability and data quality
+
+### Secondary API: OMDb (Open Movie Database)
+- **Optional** - Good basic movie information
+- **Free API key** required from [OMDb](https://www.omdbapi.com/apikey.aspx)
+- Used as fallback when TMDB is unavailable
+
+### Last Resort: IMDb Suggestion API
+- **Unofficial** - No API key required
+- Less reliable than official APIs
+- Used only when other APIs fail
+
+### Configuration
+```ini
+# TMDB API (recommended primary)
+tmdb_api_key=your_tmdb_key_here
+enable_tmdb_verification=true
+
+# OMDb API (optional secondary)
+omdb_api_key=your_omdb_key_here
+
+# IMDb fallback
+enable_imdb_verification=true
+```
 
 ## Features Details
 

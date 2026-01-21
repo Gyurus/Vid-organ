@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Simple Video Organizer and Language Setter
-# Version: 1.5.3
+# Version: 1.5.4
 # Interactive script to organize video files and set audio language metadata
 
 # Color codes for output
@@ -12,7 +12,7 @@ BLUE=''
 NC=''
 
 # Script version
-SCRIPT_VERSION="1.5.3"
+SCRIPT_VERSION="1.5.4"
 SCRIPT_REPO="Gyurus/Vid-organ"
 SCRIPT_RAW_URL="https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"
 
@@ -335,8 +335,20 @@ normalize_string() {
     echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/ /g' | sed 's/  */ /g' | sed 's/^ *//;s/ *$//'
 }
 
-# Verify title and year via OMDb (if OMDB_API_KEY set) or IMDb suggestion API
-verify_title_year_with_imdb() {
+# API Priority for Movie Verification:
+# 1. TMDB (The Movie Database) - Recommended primary API
+#    - Most comprehensive movie data
+#    - Actively maintained and reliable
+#    - Free API key required
+# 2. OMDb (Open Movie Database) - Secondary API
+#    - Good basic movie information
+#    - Free API key required
+# 3. IMDb Suggestion API - Last resort (unofficial)
+#    - No API key required but unreliable
+#    - IMDb doesn't provide official developer API
+
+# Verify title and year via TMDB (primary), OMDb (secondary), or IMDb suggestion API (last resort)
+verify_title_year_with_apis() {
     local title="$1"
     local year="$2"
 
@@ -346,11 +358,38 @@ verify_title_year_with_imdb() {
     fi
 
     if ! command -v curl >/dev/null 2>&1; then
-        echo "WARNING: curl not installed; skipping IMDb verification" >&2
+        echo "WARNING: curl not installed; skipping API verification" >&2
         return 2
     fi
 
-    # Prefer OMDb if API key is provided
+    # Priority 1: TMDB (best data quality and reliability)
+    if [ "$ENABLE_TMDB_VERIFICATION" = "true" ] && [ -n "$TMDB_API_KEY" ]; then
+        local encoded
+        encoded=$(url_encode "$title")
+        local tmdb_url="https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encoded}"
+        if [ -n "$year" ]; then
+            tmdb_url="${tmdb_url}&year=${year}"
+        fi
+
+        local json
+        json=$(curl -s --max-time 10 "$tmdb_url" 2>/dev/null)
+        if [ -n "$json" ] && echo "$json" | grep -q '"total_results":[1-9]'; then
+            # Extract first result
+            local tt
+            tt=$(echo "$json" | grep -o '"title":"[^"]*"' | head -1 | sed -E 's/.*"title":"([^"]*)".*/\1/')
+            local y
+            y=$(echo "$json" | grep -o '"release_date":"[^"]*"' | head -1 | sed -E 's/.*"release_date":"([0-9]{4}).*/\1/')
+
+            local nt1 nt2
+            nt1=$(normalize_string "$title")
+            nt2=$(normalize_string "$tt")
+            if [ "$nt1" = "$nt2" ] && ([ -z "$year" ] || [ "$y" = "$year" ]); then
+                return 0
+            fi
+        fi
+    fi
+
+    # Priority 2: OMDb (good alternative if TMDB fails)
     if [ -n "$OMDB_API_KEY" ]; then
         local url="https://www.omdbapi.com/?t=$(url_encode "$title")&y=$year&type=movie&apikey=$OMDB_API_KEY"
         local json
@@ -362,17 +401,12 @@ verify_title_year_with_imdb() {
             tt=$(echo "$json" | grep -o '"Title":"[^"]*"' | head -1 | sed -E 's/.*"Title":"([^"]*)".*/\1/')
             if [ "$y" = "$year" ]; then
                 return 0
-            else
-                echo "WARNING: IMDb/OMDb year mismatch: got '$tt' ($y), expected '$title' ($year)" >&2
-                return 1
             fi
-        else
-            echo "WARNING: OMDb found no match for '$title' ($year)" >&2
-            return 1
         fi
     fi
 
-    # Fallback to IMDb suggestion API (unofficial)
+    # Priority 3: IMDb suggestion API (unofficial - use only as last resort)
+    echo "WARNING: Using unofficial IMDb API as last resort - results may be unreliable" >&2
     local encoded
     encoded=$(url_encode "$title")
     local first
@@ -381,7 +415,7 @@ verify_title_year_with_imdb() {
     local json
     json=$(curl -sL --max-time 10 "$imdb_url")
     if [ -z "$json" ]; then
-        echo "WARNING: IMDb lookup failed for '$title' ($year)" >&2
+        echo "WARNING: All API lookups failed for '$title' ($year)" >&2
         return 1
     fi
     # Extract top result title and year
@@ -395,7 +429,7 @@ verify_title_year_with_imdb() {
     if [ "$y" = "$year" ] && [ "$nt1" = "$nt2" ]; then
         return 0
     else
-        echo "WARNING: IMDb top result '$tt' ($y) doesn't match '$title' ($year)" >&2
+        echo "WARNING: No reliable API match found for '$title' ($year)" >&2
         return 1
     fi
 }
@@ -1466,11 +1500,18 @@ main() {
             echo "Year: $movie_year"
         fi
 
-        # Interactive verification with both IMDb and TMDb
+        # Interactive verification with TMDB (primary) and IMDb (secondary)
         echo ""
         echo "Verifying title and year with online databases..."
         
-        # Search IMDb for matches
+        # Search TMDB first (better API)
+        local tmdb_matches=""
+        if [ "$ENABLE_TMDB_VERIFICATION" = "true" ] && [ -n "$TMDB_API_KEY" ]; then
+            echo "Checking TMDB..."
+            tmdb_matches=$(search_tmdb "$movie_title" "$movie_year")
+        fi
+        
+        # Search IMDb for matches (secondary)
         local imdb_matches=""
         if [ "$ENABLE_IMDB_VERIFICATION" = "true" ]; then
             echo "Checking IMDb..."
@@ -1481,13 +1522,6 @@ main() {
                 # Exact match found, continue without prompting
                 imdb_matches=""
             fi
-        fi
-        
-        # Search TMDb for matches
-        local tmdb_matches=""
-        if [ "$ENABLE_TMDB_VERIFICATION" = "true" ] && [ -n "$TMDB_API_KEY" ]; then
-            echo "Checking TMDb..."
-            tmdb_matches=$(search_tmdb "$movie_title" "$movie_year")
         fi
         
         # Check if we need to prompt user for verification
