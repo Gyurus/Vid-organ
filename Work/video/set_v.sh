@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Simple Video Organizer and Language Setter
-# Version: 1.5.2
+# Version: 1.5.3
 # Interactive script to organize video files and set audio language metadata
 
 # Color codes for output
@@ -12,7 +12,7 @@ BLUE=''
 NC=''
 
 # Script version
-SCRIPT_VERSION="1.5.2"
+SCRIPT_VERSION="1.5.3"
 SCRIPT_REPO="Gyurus/Vid-organ"
 SCRIPT_RAW_URL="https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"
 
@@ -55,6 +55,7 @@ load_config() {
             github_repo) GITHUB_REPO="$value" ;;
             github_raw_url) GITHUB_RAW_URL="$value" ;;
             tmdb_api_key) TMDB_API_KEY="$value" ;;
+            omdb_api_key) OMDB_API_KEY="$value" ;;
             enable_tmdb_verification) ENABLE_TMDB_VERIFICATION="$value" ;;
             enable_imdb_verification) ENABLE_IMDB_VERIFICATION="$value" ;;
         esac
@@ -80,7 +81,7 @@ check_for_updates() {
     
     # Get the latest version from GitHub
     local latest_version
-    latest_version=$(curl -s "${GITHUB_RAW_URL}/set_v.sh" 2>/dev/null | grep "SCRIPT_VERSION=" | head -1 | cut -d'"' -f2)
+    latest_version=$(curl -s --max-time 5 "${GITHUB_RAW_URL}/set_v.sh" 2>/dev/null | grep "SCRIPT_VERSION=" | head -1 | cut -d'"' -f2)
     
     if [ -z "$latest_version" ]; then
         echo "Could not check for updates (network issue)"
@@ -113,7 +114,7 @@ update_script() {
     local temp_file="${script_dir}/.${script_name}.tmp"
     
     # Download the latest script
-    if curl -s -o "$temp_file" "${GITHUB_RAW_URL}/${script_name}" 2>/dev/null; then
+    if curl -s --max-time 30 -o "$temp_file" "${GITHUB_RAW_URL}/${script_name}" 2>/dev/null; then
         # Backup current script
         if cp "$0" "$backup_file"; then
             # Replace with new version
@@ -150,6 +151,7 @@ ENABLE_AUTO_UPDATE=${ENABLE_AUTO_UPDATE:-"true"}
 GITHUB_REPO=${GITHUB_REPO:-"Gyurus/Vid-organ"}
 GITHUB_RAW_URL=${GITHUB_RAW_URL:-"https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"}
 TMDB_API_KEY=${TMDB_API_KEY:-""}
+OMDB_API_KEY=${OMDB_API_KEY:-""}
 ENABLE_TMDB_VERIFICATION=${ENABLE_TMDB_VERIFICATION:-"true"}
 ENABLE_IMDB_VERIFICATION=${ENABLE_IMDB_VERIFICATION:-"true"}
 
@@ -352,7 +354,7 @@ verify_title_year_with_imdb() {
     if [ -n "$OMDB_API_KEY" ]; then
         local url="https://www.omdbapi.com/?t=$(url_encode "$title")&y=$year&type=movie&apikey=$OMDB_API_KEY"
         local json
-        json=$(curl -sL "$url")
+        json=$(curl -sL --max-time 10 "$url")
         if echo "$json" | grep -q '"Response":"True"'; then
             local y
             y=$(echo "$json" | grep -o '"Year":"[0-9]\{4\}"' | head -1 | sed -E 's/.*"Year":"([0-9]{4})".*/\1/')
@@ -371,32 +373,32 @@ verify_title_year_with_imdb() {
     fi
 
     # Fallback to IMDb suggestion API (unofficial)
-        local encoded
-        encoded=$(url_encode "$title")
-        local first
-        first=$(printf '%s' "$encoded" | cut -c1 | tr '[:upper:]' '[:lower:]')
-        local imdb_url="https://v2.sg.media-imdb.com/suggestion/${first}/${encoded}.json"
-        local json
-        json=$(curl -sL "$imdb_url")
-        if [ -z "$json" ]; then
-            echo "WARNING: IMDb lookup failed for '$title' ($year)" >&2
-            return 1
-        fi
-        # Extract top result title and year
-        local tt
-        tt=$(echo "$json" | grep -o '"l":"[^"]*"' | head -1 | sed -E 's/.*"l":"([^"]*)".*/\1/')
-        local y
-        y=$(echo "$json" | grep -o '"y":[0-9]\{4\}' | head -1 | sed -E 's/.*"y":([0-9]{4}).*/\1/')
-        local nt1 nt2
-        nt1=$(normalize_string "$title")
-        nt2=$(normalize_string "$tt")
-        if [ "$y" = "$year" ] && [ "$nt1" = "$nt2" ]; then
-            return 0
-        else
-            echo "WARNING: IMDb top result '$tt' ($y) doesn't match '$title' ($year)" >&2
-            return 1
-        fi
-    }
+    local encoded
+    encoded=$(url_encode "$title")
+    local first
+    first=$(printf '%s' "$encoded" | cut -c1 | tr '[:upper:]' '[:lower:]')
+    local imdb_url="https://v2.sg.media-imdb.com/suggestion/${first}/${encoded}.json"
+    local json
+    json=$(curl -sL --max-time 10 "$imdb_url")
+    if [ -z "$json" ]; then
+        echo "WARNING: IMDb lookup failed for '$title' ($year)" >&2
+        return 1
+    fi
+    # Extract top result title and year
+    local tt
+    tt=$(echo "$json" | grep -o '"l":"[^"]*"' | head -1 | sed -E 's/.*"l":"([^"]*)".*/\1/')
+    local y
+    y=$(echo "$json" | grep -o '"y":[0-9]\{4\}' | head -1 | sed -E 's/.*"y":([0-9]{4}).*/\1/')
+    local nt1 nt2
+    nt1=$(normalize_string "$title")
+    nt2=$(normalize_string "$tt")
+    if [ "$y" = "$year" ] && [ "$nt1" = "$nt2" ]; then
+        return 0
+    else
+        echo "WARNING: IMDb top result '$tt' ($y) doesn't match '$title' ($year)" >&2
+        return 1
+    fi
+}
 
 # Function to search IMDb for movie matches and return results
 search_imdb() {
@@ -420,7 +422,7 @@ search_imdb() {
     local imdb_url="https://v2.sg.media-imdb.com/suggestion/${first}/${encoded}.json"
     
     local json
-    json=$(curl -s "$imdb_url" 2>/dev/null)
+    json=$(curl -s --max-time 10 "$imdb_url" 2>/dev/null)
     
     if [ -z "$json" ]; then
         return 1
@@ -549,7 +551,7 @@ search_tmdb() {
     fi
     
     local json
-    json=$(curl -s "$tmdb_url" 2>/dev/null)
+    json=$(curl -s --max-time 10 "$tmdb_url" 2>/dev/null)
     
     if [ -z "$json" ]; then
         return 1
@@ -1831,7 +1833,7 @@ install_script() {
     
     # Download the script
     local temp_script="${install_dir}/.${script_name}.tmp"
-    if ! curl -sL -o "$temp_script" "${GITHUB_RAW_URL}/${script_name}" 2>/dev/null; then
+    if ! curl -sL --max-time 30 -o "$temp_script" "${GITHUB_RAW_URL}/${script_name}" 2>/dev/null; then
         echo "Failed to download script from GitHub" >&2
         rm -f "$temp_script"
         return 1
@@ -1839,7 +1841,7 @@ install_script() {
     
     # Download the config file
     local temp_config="${config_dir}/.set_v.ini.tmp"
-    if ! curl -sL -o "$temp_config" "${GITHUB_RAW_URL}/set_v.ini" 2>/dev/null; then
+    if ! curl -sL --max-time 10 -o "$temp_config" "${GITHUB_RAW_URL}/set_v.ini" 2>/dev/null; then
         echo "Warning: Could not download config file, using defaults" >&2
         rm -f "$temp_config"
     fi
