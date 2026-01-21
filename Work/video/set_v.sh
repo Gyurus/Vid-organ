@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Simple Video Organizer and Language Setter
-# Version: 1.1
+# Version: 1.5.2
 # Interactive script to organize video files and set audio language metadata
 
 # Color codes for output
@@ -1297,7 +1297,7 @@ calculate_total_size() {
 # Main function
 main() {
     echo "==============================="
-    echo "Simple Video Organizer v1.0.0"
+    echo "Simple Video Organizer v${SCRIPT_VERSION}"
     echo "==============================="
     echo
 
@@ -1891,7 +1891,7 @@ install_script() {
 # Function to show usage/help
 show_help() {
     cat << 'EOF'
-Video Organizer and Audio Language Setter v1.1
+Video Organizer and Audio Language Setter v1.5.2
 
 Usage: set_v.sh [OPTIONS]
 

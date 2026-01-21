@@ -120,11 +120,17 @@ The script uses modern 256-color ANSI palette for better visual clarity:
 
 ## Version
 
-**Current:** v1.5.1
+**Current:** v1.5.2
 
 Updates are checked automatically from GitHub on startup (can be disabled in INI).
 
 ## Recent Changes
+
+### v1.5.2
+- Fixed config file location to use XDG config directory (~/.config/video-organizer/)
+- Improved installer to automatically add ~/.local/bin to PATH
+- Enhanced config file security (permissions set to 600)
+- Updated AI coding agent instructions for better guidance
 
 ### v1.5.1
 - Code cleanup and optimization (reduced from 1588 to 1564 lines)
