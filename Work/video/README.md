@@ -6,12 +6,14 @@ A comprehensive bash script for organizing and managing video files with automat
 
 - 🎬 **Audio Language Management** - Set/verify audio language metadata in video files
 - 📁 **Auto-Organization** - Organize videos into `Title.Year` folder structure with intelligent naming
+- � **TV Series Support** - Automatic detection and organization of TV series with SxxExx pattern
 - 🗑️ **Smart Cleanup** - Remove sample files and move old directories to `Aa.removed` folder
 - ⚙️ **Configuration** - INI file for easy customization (configurable thresholds, settings)
 - 🔄 **Auto-Update** - Automatic GitHub-based update detection with true auto-download
 - 🎨 **Modern UI** - 256-color palette with visual feedback and clear status indicators
 - 🛡️ **Safety Features** - Protects script and INI file from accidental deletion
 - 🌐 **API Verification** - Verify movie titles and years using multiple online databases
+- 📝 **Smart Subtitle Detection** - Recursively finds and moves subtitles from all subfolders
 
 ## API Verification
 
@@ -51,15 +53,28 @@ enable_imdb_verification=true
 ## Features Details
 
 ### Naming Convention
+**Movies:**
 - **Folders:** `Movie_Name.2024`
 - **Single Audio:** `Movie_Name_2024_eng.mkv`
 - **Multiple Audio:** `Movie_Name_2024_eng_hun_rus.mkv`
+
+**TV Series:**
+- **Folders:** `Serials.org/Series Name/Season 01/`
+- **Files:** `Series.Name.S01E05.Episode.Title.mkv`
+- **With Language:** `Series.Name.S01E05.Episode.Title.eng.mkv`
+
+### TV Series Detection
+- Automatically detects SxxExx pattern (e.g., S01E05, s02e10)
+- Organizes into: `Serials.org/Series Name/Season XX/`
+- Preserves episode titles from filename
+- Handles subtitles for series episodes
 
 ### Smart Organization
 - Auto-plays video if language metadata is missing
 - Detects undefined (und) audio tracks and prompts for language
 - Handles files with multiple audio tracks automatically
 - Moves old directories to removed folder after reorganization
+- Recursively searches for subtitles in all subfolders (Subs, Sub, etc.)
 
 ### Configuration
 All settings are stored in `set_audio.ini` with auto-update for missing settings:

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Simple Video Organizer and Language Setter
-# Version: 1.5.6
+# Version: 1.6.0
 # Interactive script to organize video files and set audio language metadata
 
 # Color codes for output
@@ -12,7 +12,7 @@ BLUE=''
 NC=''
 
 # Script version
-SCRIPT_VERSION="1.5.6"
+SCRIPT_VERSION="1.6.0"
 SCRIPT_REPO="Gyurus/Vid-organ"
 SCRIPT_RAW_URL="https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"
 
@@ -48,6 +48,7 @@ load_config() {
             min_file_size_mb) MIN_FILE_SIZE_MB="$value" ;;
             default_player) DEFAULT_PLAYER="$value" ;;
             default_output_dir) DEFAULT_OUTPUT_DIR="$value" ;;
+            default_serials_dir) DEFAULT_SERIALS_DIR="$value" ;;
             video_extensions) VIDEO_EXTENSIONS="$value" ;;
             subtitle_extensions) SUBTITLE_EXTENSIONS="$value" ;;
             default_audio_language) DEFAULT_AUDIO_LANGUAGE="$value" ;;
@@ -147,6 +148,7 @@ VIDEO_EXTENSIONS=${VIDEO_EXTENSIONS:-"avi|mkv|mp4|mov|wmv|flv|webm|m4v|mpg|mpeg|
 SUBTITLE_EXTENSIONS=${SUBTITLE_EXTENSIONS:-"srt|sub|ass|ssa|vtt|smi"}
 DEFAULT_PLAYER=${DEFAULT_PLAYER:-"smplayer"}
 DEFAULT_OUTPUT_DIR=${DEFAULT_OUTPUT_DIR:-"Movies.org"}
+DEFAULT_SERIALS_DIR=${DEFAULT_SERIALS_DIR:-"Serials.org"}
 DEFAULT_AUDIO_LANGUAGE=${DEFAULT_AUDIO_LANGUAGE:-"eng"}
 ENABLE_AUTO_UPDATE=${ENABLE_AUTO_UPDATE:-"true"}
 GITHUB_REPO=${GITHUB_REPO:-"Gyurus/Vid-organ"}
@@ -312,6 +314,55 @@ extract_movie_info() {
     movie_name=$(echo "$movie_name" | sed -E 's/\(([[:space:][:punct:]]*)\)//g; s/(^| )(720p|1080p|2160p|4K|UHD|480p)$//I; s/  */ /g; s/^ *//; s/ *$//')
 
     echo "${movie_name}|${year}"
+}
+
+# Function to detect and extract TV series information
+extract_series_info() {
+    local filename="$1"
+    local series_name=""
+    local season=""
+    local episode=""
+    local episode_title=""
+    
+    # Remove extension
+    local base_name="${filename%.*}"
+    
+    # Check for SxxExx pattern (e.g., S01E05, s02e10)
+    if [[ "$base_name" =~ [Ss]([0-9]{1,2})[Ee]([0-9]{1,2}) ]]; then
+        season="${BASH_REMATCH[1]}"
+        episode="${BASH_REMATCH[2]}"
+        
+        # Pad season and episode with zeros
+        season=$(printf "%02d" "$season")
+        episode=$(printf "%02d" "$episode")
+        
+        # Extract series name (everything before SxxExx)
+        local before_pattern="${base_name%%[Ss][0-9][0-9][Ee][0-9][0-9]*}"
+        
+        # Extract episode title (everything after SxxExx)
+        local after_pattern="${base_name#*[Ss][0-9][0-9][Ee][0-9][0-9]}"
+        
+        # Clean series name
+        series_name=$(echo "$before_pattern" | sed -E 's/[._-]+/ /g; s/  */ /g; s/^ *//; s/ *$//')
+        series_name=$(echo "$series_name" | sed -E 's/ (720p|1080p|2160p|480p|4K|WEB|BluRay|BRRip|HDRip|WEBRip|x264|x265|HEVC).*//I')
+        
+        # Clean episode title
+        episode_title=$(echo "$after_pattern" | sed -E 's/^[._-]+//; s/[._-]+/ /g')
+        episode_title=$(echo "$episode_title" | sed -E 's/ (720p|1080p|2160p|480p|4K|WEB|BluRay|BRRip|HDRip|WEBRip|x264|x265|HEVC).*//I')
+        episode_title=$(echo "$episode_title" | sed -E 's/  */ /g; s/^ *//; s/ *$//')
+        
+        # If no episode title, use generic name
+        if [ -z "$episode_title" ]; then
+            episode_title="Episode ${episode}"
+        fi
+        
+        # Output: series_name|season|episode|episode_title
+        echo "${series_name}|${season}|${episode}|${episode_title}"
+        return 0
+    fi
+    
+    # Not a series
+    return 1
 }
 
 # URL-encode a string (RFC 3986-ish for our needs)
@@ -924,21 +975,16 @@ find_subtitle_files() {
             fi
         done < <(find "$video_dir" -maxdepth 1 -type f \( -iname "*.srt" -o -iname "*.sub" -o -iname "*.ass" -o -iname "*.ssa" -o -iname "*.vtt" -o -iname "*.smi" \) -print0 2>/dev/null)
         
-        # Strategy 2: Find subtitles in common subtitle subfolders
-        for subfolder in "Sub" "Subs" "Subtitle" "Subtitles"; do
-            local sub_path="${video_dir}/${subfolder}"
-            if [ -d "$sub_path" ]; then
-                while IFS= read -r -d '' sub_file; do
-                    if [ -f "$sub_file" ]; then
-                        local sub_path=$(realpath "$sub_file" 2>/dev/null || echo "$sub_file")
-                        if [ -z "${found_subtitles[$sub_path]}" ]; then
-                            found_subtitles[$sub_path]=1
-                            echo "$sub_file"
-                        fi
-                    fi
-                done < <(find "$sub_path" -type f \( -iname "*.srt" -o -iname "*.sub" -o -iname "*.ass" -o -iname "*.ssa" -o -iname "*.vtt" -o -iname "*.smi" \) -print0 2>/dev/null)
+        # Strategy 2: Find subtitles recursively in video directory and all subfolders
+        while IFS= read -r -d '' sub_file; do
+            if [ -f "$sub_file" ]; then
+                local sub_path=$(realpath "$sub_file" 2>/dev/null || echo "$sub_file")
+                if [ -z "${found_subtitles[$sub_path]}" ]; then
+                    found_subtitles[$sub_path]=1
+                    echo "$sub_file"
+                fi
             fi
-        done
+        done < <(find "$video_dir" -type f \( -iname "*.srt" -o -iname "*.sub" -o -iname "*.ass" -o -iname "*.ssa" -o -iname "*.vtt" -o -iname "*.smi" \) -print0 2>/dev/null)
     fi
     
     # Strategy 3: If still no results, try fuzzy matching based on normalized names (fallback)
@@ -1492,7 +1538,118 @@ main() {
         show_progress "$processed_count" "$file_count"
         echo "---------------------------------------"
 
-        # Extract movie info
+        # Check if this is a TV series or movie
+        echo "Analyzing file..."
+        local series_info
+        series_info=$(extract_series_info "$(basename "$file")")
+        
+        if [ $? -eq 0 ] && [ -n "$series_info" ]; then
+            # This is a TV series episode
+            local series_name season_num episode_num episode_title
+            series_name=$(echo "$series_info" | cut -d'|' -f1)
+            season_num=$(echo "$series_info" | cut -d'|' -f2)
+            episode_num=$(echo "$series_info" | cut -d'|' -f3)
+            episode_title=$(echo "$series_info" | cut -d'|' -f4)
+            
+            echo "Detected TV Series:"
+            echo "  Series: $series_name"
+            echo "  Season: $season_num"
+            echo "  Episode: $episode_num - $episode_title"
+            
+            # Create series directory structure: Serials.org/Series Name/Season XX/
+            local serials_base_dir="${input_dir}/${DEFAULT_SERIALS_DIR}"
+            local series_dir="${serials_base_dir}/${series_name}"
+            local season_dir="${series_dir}/Season ${season_num}"
+            
+            echo "Creating directory structure..."
+            if ! mkdir -p "$season_dir" 2>/dev/null; then
+                echo "Failed to create directory: $season_dir"
+                continue
+            fi
+            
+            # Construct episode filename: Series.Name.S01E05.Episode.Title.ext
+            local clean_series=$(echo "$series_name" | sed 's/ /./g')
+            local clean_episode=$(echo "$episode_title" | sed 's/ /./g')
+            local extension="${file##*.}"
+            local new_filename="${clean_series}.S${season_num}E${episode_num}.${clean_episode}.${extension}"
+            local target_path="${season_dir}/${new_filename}"
+            
+            # Handle duplicates
+            local final_path=$(get_unique_filepath "$target_path")
+            
+            echo "Moving episode file..."
+            local original_video_file="$file"
+            if mv "$file" "$final_path" 2>/dev/null; then
+                echo "Moved to: $final_path"
+                file="$final_path"
+                
+                # Find and move subtitle files
+                echo "Searching for subtitle files..."
+                local subtitle_count=0
+                while IFS= read -r subtitle_file; do
+                    if [ -z "$subtitle_file" ]; then
+                        continue
+                    fi
+                    if [ $subtitle_count -eq 0 ]; then
+                        echo "Found subtitle files:"
+                    fi
+                    
+                    local subtitle_ext="${subtitle_file##*.}"
+                    local subtitle_basename=$(basename "$subtitle_file" ."$subtitle_ext")
+                    
+                    # Rename subtitle to match video
+                    local new_subtitle_name="${clean_series}.S${season_num}E${episode_num}.${clean_episode}.${subtitle_ext}"
+                    
+                    # If subtitle has language code in name, preserve it
+                    if [[ "$subtitle_basename" =~ \.(eng|hun|ger|kor|fre|spa|ita|por|rus|jpn)$ ]]; then
+                        local lang_code="${BASH_REMATCH[1]}"
+                        new_subtitle_name="${clean_series}.S${season_num}E${episode_num}.${clean_episode}.${lang_code}.${subtitle_ext}"
+                    fi
+                    
+                    local target_sub_path="${season_dir}/${new_subtitle_name}"
+                    local final_sub_path=$(get_unique_filepath "$target_sub_path")
+                    
+                    echo "  Moving: $(basename "$subtitle_file") -> $(basename "$final_sub_path")"
+                    if mv "$subtitle_file" "$final_sub_path" 2>/dev/null; then
+                        ((subtitle_count++))
+                    else
+                        echo "  Failed to move subtitle"
+                    fi
+                done < <(find_subtitle_files "$source_folder" "$series_name" "$original_video_file")
+                
+                if [ "$subtitle_count" -eq 0 ]; then
+                    echo "No subtitle files found"
+                else
+                    echo "Moved $subtitle_count subtitle file(s)"
+                fi
+                
+                # Process audio tracks for series
+                echo "Analyzing audio tracks..."
+                local audio_track_info
+                audio_track_info=$(get_audio_languages "$file")
+                local track_languages=()
+                
+                if [ -n "$audio_track_info" ]; then
+                    while IFS= read -r track_info; do
+                        local lang=$(echo "$track_info" | cut -d':' -f2)
+                        if [ "$lang" != "und" ] && [ -n "$lang" ]; then
+                            track_languages+=("$lang")
+                        fi
+                    done <<< "$audio_track_info"
+                fi
+                
+                echo "Processing complete for: $series_name S${season_num}E${episode_num}"
+                echo ""
+            else
+                echo "Failed to move episode file"
+                continue
+            fi
+            
+            # Skip to next file (don't process as movie)
+            continue
+        fi
+        
+        # Extract movie info (it's a movie, not a series)
         echo "Extracting movie information..."
         local filename
         filename=$(basename "$file")
