@@ -663,16 +663,13 @@ prompt_user_for_title_selection() {
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
-    # If results are lengthy, pause to let user read them
+    # Always pause and reprint the options summary before the prompt
     local total_results=${#all_options[@]}
-    if [ "$total_results" -gt 5 ]; then
-        echo ""
-        echo -e "\033[1;33m⏸  Press ENTER to continue to selection...\033[0m"
-        read -r </dev/tty
-    fi
-    
-    # Display option summary reminder before input prompt
     echo ""
+    echo -e "\033[1;33m⏸  Press ENTER to continue to selection...\033[0m"
+    read -r </dev/tty
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "Available options:"
     echo "  [0] - Use extracted: $extracted_title $([ -n "$extracted_year" ] && echo "($extracted_year)" || echo "(no year)")"
     if [ "$total_results" -gt 0 ]; then
@@ -682,7 +679,6 @@ prompt_user_for_title_selection() {
     echo ""
     echo -e "\033[2;37m(Scroll up if options are not visible)\033[0m"
     echo ""
-    
     # Prompt user for selection
     local choice
     while true; do
