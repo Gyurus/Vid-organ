@@ -34,14 +34,17 @@ The script uses multiple movie database APIs for title and year verification:
 
 ### Configuration
 ```ini
-# TMDB API (recommended primary)
+# Master setting - enable/disable all online verification (default: false)
+enable_online_verification=false
+
+# TMDB API (recommended primary) - only used if enable_online_verification=true
 tmdb_api_key=your_tmdb_key_here
 enable_tmdb_verification=true
 
-# OMDb API (optional secondary)
+# OMDb API (optional secondary) - only used if enable_online_verification=true
 omdb_api_key=your_omdb_key_here
 
-# IMDb fallback
+# IMDb fallback - only used if enable_online_verification=true
 enable_imdb_verification=true
 ```
 

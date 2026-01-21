@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Simple Video Organizer and Language Setter
-# Version: 1.5.5
+# Version: 1.5.6
 # Interactive script to organize video files and set audio language metadata
 
 # Color codes for output
@@ -12,7 +12,7 @@ BLUE=''
 NC=''
 
 # Script version
-SCRIPT_VERSION="1.5.5"
+SCRIPT_VERSION="1.5.6"
 SCRIPT_REPO="Gyurus/Vid-organ"
 SCRIPT_RAW_URL="https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"
 
@@ -56,6 +56,7 @@ load_config() {
             github_raw_url) GITHUB_RAW_URL="$value" ;;
             tmdb_api_key) TMDB_API_KEY="$value" ;;
             omdb_api_key) OMDB_API_KEY="$value" ;;
+            enable_online_verification) ENABLE_ONLINE_VERIFICATION="$value" ;;
             enable_tmdb_verification) ENABLE_TMDB_VERIFICATION="$value" ;;
             enable_imdb_verification) ENABLE_IMDB_VERIFICATION="$value" ;;
         esac
@@ -152,6 +153,7 @@ GITHUB_REPO=${GITHUB_REPO:-"Gyurus/Vid-organ"}
 GITHUB_RAW_URL=${GITHUB_RAW_URL:-"https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"}
 TMDB_API_KEY=${TMDB_API_KEY:-""}
 OMDB_API_KEY=${OMDB_API_KEY:-""}
+ENABLE_ONLINE_VERIFICATION=${ENABLE_ONLINE_VERIFICATION:-"false"}
 ENABLE_TMDB_VERIFICATION=${ENABLE_TMDB_VERIFICATION:-"true"}
 ENABLE_IMDB_VERIFICATION=${ENABLE_IMDB_VERIFICATION:-"true"}
 
@@ -355,6 +357,12 @@ verify_title_year_with_apis() {
     # If no year, skip verification
     if [ -z "$year" ]; then
         return 0
+    fi
+
+    # Check master online verification setting
+    if [ "$ENABLE_ONLINE_VERIFICATION" != "true" ]; then
+        echo "WARNING: Online verification disabled (enable_online_verification=false)" >&2
+        return 1
     fi
 
     if ! command -v curl >/dev/null 2>&1; then
@@ -1502,26 +1510,32 @@ main() {
 
         # Interactive verification with TMDB (primary) and IMDb (secondary)
         echo ""
-        echo "Verifying title and year with online databases..."
-        
-        # Search TMDB first (better API)
-        local tmdb_matches=""
-        if [ "$ENABLE_TMDB_VERIFICATION" = "true" ] && [ -n "$TMDB_API_KEY" ]; then
-            echo "Checking TMDB..."
-            tmdb_matches=$(search_tmdb "$movie_title" "$movie_year")
-        fi
-        
-        # Search IMDb for matches (secondary)
-        local imdb_matches=""
-        if [ "$ENABLE_IMDB_VERIFICATION" = "true" ]; then
-            echo "Checking IMDb..."
-            if ! check_imdb_match "$movie_title" "$movie_year" 2>&1 | grep -q "✓ IMDb Match Found"; then
-                # Get IMDb results if no exact match - use new search function
-                imdb_matches=$(search_imdb "$movie_title" "$movie_year")
-            else
-                # Exact match found, continue without prompting
-                imdb_matches=""
+        if [ "$ENABLE_ONLINE_VERIFICATION" = "true" ]; then
+            echo "Verifying title and year with online databases..."
+            
+            # Search TMDB first (better API)
+            local tmdb_matches=""
+            if [ "$ENABLE_TMDB_VERIFICATION" = "true" ] && [ -n "$TMDB_API_KEY" ]; then
+                echo "Checking TMDB..."
+                tmdb_matches=$(search_tmdb "$movie_title" "$movie_year")
             fi
+            
+            # Search IMDb for matches (secondary)
+            local imdb_matches=""
+            if [ "$ENABLE_IMDB_VERIFICATION" = "true" ]; then
+                echo "Checking IMDb..."
+                if ! check_imdb_match "$movie_title" "$movie_year" 2>&1 | grep -q "✓ IMDb Match Found"; then
+                    # Get IMDb results if no exact match - use new search function
+                    imdb_matches=$(search_imdb "$movie_title" "$movie_year")
+                else
+                    # Exact match found, continue without prompting
+                    imdb_matches=""
+                fi
+            fi
+        else
+            echo "Online verification disabled (enable_online_verification=false)"
+            local tmdb_matches=""
+            local imdb_matches=""
         fi
         
         # Check if we need to prompt user for verification
