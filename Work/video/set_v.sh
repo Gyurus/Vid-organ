@@ -1546,7 +1546,6 @@ main() {
         # Check if this is a TV series or movie
         echo "Analyzing file..."
         local series_info
-        series_info=$(extract_series_info "$(basename "$file")")
         
         if series_info=$(extract_series_info "$(basename "$file")") && [ -n "$series_info" ]; then
             # This is a TV series episode
