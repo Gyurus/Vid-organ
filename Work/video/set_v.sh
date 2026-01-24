@@ -1889,10 +1889,10 @@ main() {
                 verified_lang=$(ffprobe -v quiet -select_streams a:"$i" -show_entries stream_tags=language -of csv=p=0 "$file" 2>/dev/null | tr -d '\n\r' | xargs)
                 if [[ "$verified_lang" == "$language_code" ]]; then
                     echo "✓ Track $track_num language verified: $language_code"
-                    track_languages[i]="$language_code"
+                    track_languages[$i]="$language_code"
                 else
                     echo "⚠ Warning: Track $track_num verification failed (expected: $language_code, got: $verified_lang)"
-                    track_languages[i]="$language_code"
+                    track_languages[$i]="$language_code"
                 fi
             done
         fi
@@ -1988,7 +1988,7 @@ main() {
                 if [ -f "$subtitle_path" ]; then
                     local renamed_path
                     if renamed_path=$(rename_subtitle_to_match_video "$subtitle_path" "$file"); then
-                        moved_subtitles[i]="$renamed_path"
+                        moved_subtitles[$i]="$renamed_path"
                         ((renamed_count++))
                     fi
                 fi
