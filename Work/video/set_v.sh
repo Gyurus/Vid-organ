@@ -930,7 +930,7 @@ set_audio_language() {
     
     if [ "$use_movflags" = true ]; then
         if ffmpeg -hide_banner -loglevel error -y -i "$file" -map 0 -c copy $format_opt -movflags use_metadata_tags \
-            -metadata:s:a:$track_index language="$language" "$temp_file"; then
+            -metadata:s:a:"$track_index" language="$language" "$temp_file"; then
             mv "$temp_file" "$file" 2>/dev/null
             echo "Language set successfully (ffmpeg)"
             return 0
@@ -941,7 +941,7 @@ set_audio_language() {
         fi
     else
         if ffmpeg -hide_banner -loglevel error -y -i "$file" -map 0 -c copy $format_opt \
-            -metadata:s:a:$track_index language="$language" "$temp_file"; then
+            -metadata:s:a:"$track_index" language="$language" "$temp_file"; then
             mv "$temp_file" "$file" 2>/dev/null
             echo "Language set successfully (ffmpeg)"
             return 0
@@ -1886,7 +1886,7 @@ main() {
                 
                 # Verify the language was set correctly
                 local verified_lang
-                verified_lang=$(ffprobe -v quiet -select_streams a:$i -show_entries stream_tags=language -of csv=p=0 "$file" 2>/dev/null | tr -d '\n\r' | xargs)
+                verified_lang=$(ffprobe -v quiet -select_streams a:"$i" -show_entries stream_tags=language -of csv=p=0 "$file" 2>/dev/null | tr -d '\n\r' | xargs)
                 if [[ "$verified_lang" == "$language_code" ]]; then
                     echo "✓ Track $track_num language verified: $language_code"
                     track_languages[i]="$language_code"
