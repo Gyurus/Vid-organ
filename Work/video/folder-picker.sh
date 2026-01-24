@@ -49,8 +49,7 @@ select_folder_gui() {
 
 # Run if executed directly
 if [ "${BASH_SOURCE[0]}" == "${0}" ]; then
-    result=$(select_folder_gui)
-    if [ $? -eq 0 ]; then
+    if result=$(select_folder_gui); then
         echo "Selected folder: $result"
         exit 0
     else

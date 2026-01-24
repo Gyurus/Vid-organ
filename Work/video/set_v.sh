@@ -4,17 +4,8 @@
 # Version: 1.6.0
 # Interactive script to organize video files and set audio language metadata
 
-# Color codes for output
-RED=''
-GREEN=''
-YELLOW=''
-BLUE=''
-NC=''
-
 # Script version
 SCRIPT_VERSION="1.6.0"
-SCRIPT_REPO="Gyurus/Vid-organ"
-SCRIPT_RAW_URL="https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"
 
 # Language code pattern for subtitle and video processing
 LANG_PATTERN="(eng|hun|ger|kor|fre|spa|ita|por|rus|jpn)"
@@ -110,8 +101,10 @@ check_for_updates() {
 update_script() {
     echo "Downloading update..."
     
-    local script_dir=$(dirname "$0")
-    local script_name=$(basename "$0")
+    local script_dir
+    local script_name
+    script_dir=$(dirname "$0")
+    script_name=$(basename "$0")
     local backup_file="${script_dir}/${script_name}.bak"
     local temp_file="${script_dir}/.${script_name}.tmp"
     
@@ -442,7 +435,7 @@ verify_title_year_with_apis() {
             local nt1 nt2
             nt1=$(normalize_string "$title")
             nt2=$(normalize_string "$tt")
-            if [ "$nt1" = "$nt2" ] && ([ -z "$year" ] || [ "$y" = "$year" ]); then
+            if [ "$nt1" = "$nt2" ] && { [ -z "$year" ] || [ "$y" = "$year" ]; }; then
                 return 0
             fi
         fi
@@ -450,7 +443,8 @@ verify_title_year_with_apis() {
 
     # Priority 2: OMDb (good alternative if TMDB fails)
     if [ -n "$OMDB_API_KEY" ]; then
-        local url="https://www.omdbapi.com/?t=$(url_encode "$title")&y=$year&type=movie&apikey=$OMDB_API_KEY"
+        local url
+        url="https://www.omdbapi.com/?t=$(url_encode "$title")&y=$year&type=movie&apikey=$OMDB_API_KEY"
         local json
         json=$(curl -sL --max-time 10 "$url")
         if echo "$json" | grep -q '"Response":"True"'; then
@@ -586,7 +580,7 @@ check_imdb_match() {
     norm_found=$(normalize_string "$found_title")
     
     # Exact match or very close match
-    if [ "$norm_input" = "$norm_found" ] && ([ -z "$year" ] || [ "$found_year" = "$year" ]); then
+    if [ "$norm_input" = "$norm_found" ] && { [ -z "$year" ] || [ "$found_year" = "$year" ]; }; then
         echo ""
         echo "✓ IMDb Match Found:"
         echo "  Title: $found_title"
