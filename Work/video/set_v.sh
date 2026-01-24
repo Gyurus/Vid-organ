@@ -1812,21 +1812,18 @@ main() {
             local current_ext="${cleaned_name##*.}"
             local extension="$current_ext"
             
-            # 2. Desired base (without extension)
+            # 2. Desired base (without extension) - sanitize for filesystem
             local desired_base
             if [ -n "$movie_year" ]; then
-                desired_base="${movie_title}.${movie_year}"
+                desired_base="$(sanitize_title "$movie_title").${movie_year}"
             else
-                desired_base="${movie_title}"
+                desired_base="$(sanitize_title "$movie_title")"
             fi
 
-            # 3. Build desired final filename
+            # 3. Build desired final filename (sanitization already applied to base)
             local desired_name="${desired_base}_${language_string}.${extension}"
 
-            # 4. Sanitize desired name
-            desired_name=$(sanitize_title "$desired_name")
-
-            # 5. Check if already in desired format to avoid unnecessary move
+            # 4. Check if already in desired format to avoid unnecessary move
             local current_base="${cleaned_name%.*}"
             if [[ "$current_base" == "${desired_base}_${language_string}" ]]; then
                 # Already correct, but may need to apply language tag fix if cleaned_name differs
