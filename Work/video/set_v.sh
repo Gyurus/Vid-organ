@@ -101,8 +101,10 @@ check_for_updates() {
 update_script() {
     echo "Downloading update..."
     
-    local script_dir=$(dirname "$0")
-    local script_name=$(basename "$0")
+    local script_dir
+    script_dir=$(dirname "$0")
+    local script_name
+    script_name=$(basename "$0")
     local backup_file="${script_dir}/${script_name}.bak"
     local temp_file="${script_dir}/.${script_name}.tmp"
     
@@ -224,6 +226,12 @@ pick_folder() {
     echo -n "Enter video folder path: "
     read -r folder_path
     echo "$folder_path"
+}
+
+# Function to sanitize title for filesystem
+sanitize_title() {
+    local title="$1"
+    echo "$title" | sed 's/[<>:"/\\|?*]/_/g' | sed 's/_*$//' | sed 's/^_*//'
 }
 
 # Function to get output directory
@@ -487,7 +495,7 @@ check_imdb_match() {
     norm_found=$(normalize_string "$found_title")
     
     # Exact match or very close match
-    if [ "$norm_input" = "$norm_found" ] && ([ -z "$year" ] || [ "$found_year" = "$year" ]); then
+    if [ "$norm_input" = "$norm_found" ] && { [ -z "$year" ] || [ "$found_year" = "$year" ]; }; then
         echo ""
         echo "✓ IMDb Match Found:"
         echo "  Title: $found_title"
@@ -1590,11 +1598,11 @@ main() {
         if [ -n "$movie_year" ]; then
             # Remove problematic characters from movie title for directory name
             local safe_title
-            safe_title=$(echo "$movie_title" | sed 's/[<>:"/\\|?*]/_/g' | sed 's/_*$//' | sed 's/^_*//')
+            safe_title=$(sanitize_title "$movie_title")
             subfolder_name="${safe_title}_${movie_year}"
         else
             local safe_title
-            safe_title=$(echo "$movie_title" | sed 's/[<>:"/\\|?*]/_/g' | sed 's/_*$//' | sed 's/^_*//')
+            safe_title=$(sanitize_title "$movie_title")
             subfolder_name="$safe_title"
         fi
 
@@ -1816,7 +1824,7 @@ main() {
             local desired_name="${desired_base}_${language_string}.${extension}"
 
             # 4. Sanitize desired name
-            desired_name=$(echo "$desired_name" | sed 's/[<>:"/\\|?*]/_/g')
+            desired_name=$(sanitize_title "$desired_name")
 
             # 5. Check if already in desired format to avoid unnecessary move
             local current_base="${cleaned_name%.*}"
