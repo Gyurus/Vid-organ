@@ -101,8 +101,7 @@ check_for_updates() {
 update_script() {
     echo "Downloading update..."
     
-    local script_dir
-    local script_name
+    local script_dir script_name
     script_dir=$(dirname "$0")
     script_name=$(basename "$0")
     local backup_file="${script_dir}/${script_name}.bak"
