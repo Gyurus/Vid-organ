@@ -231,7 +231,7 @@ pick_folder() {
 # Function to sanitize title for filesystem
 sanitize_title() {
     local title="$1"
-    echo "$title" | sed 's/[<>:"/\\|?*]/_/g' | sed 's/_*$//' | sed 's/^_*//'
+    echo "$title" | sed 's/[<>:"/\\|?*]/_/g; s/^_*//; s/_*$//'
 }
 
 # Function to get output directory
