@@ -571,8 +571,10 @@ check_imdb_match() {
     
     # Check if first result matches
     local first_result="${results[0]}"
-    local found_title=$(echo "$first_result" | cut -d'|' -f1)
-    local found_year=$(echo "$first_result" | cut -d'|' -f2)
+    local found_title
+    local found_year
+    found_title=$(echo "$first_result" | cut -d'|' -f1)
+    found_year=$(echo "$first_result" | cut -d'|' -f2)
     
     local norm_input
     norm_input=$(normalize_string "$title")
@@ -598,8 +600,10 @@ check_imdb_match() {
     
     local counter=1
     for result in "${results[@]}"; do
-        local rtitle=$(echo "$result" | cut -d'|' -f1)
-        local ryear=$(echo "$result" | cut -d'|' -f2)
+        local rtitle
+        local ryear
+        rtitle=$(echo "$result" | cut -d'|' -f1)
+        ryear=$(echo "$result" | cut -d'|' -f2)
         echo "  $counter. $rtitle $([ -n "$ryear" ] && echo "($ryear)" || echo "")"
         ((counter++))
     done
@@ -714,8 +718,10 @@ prompt_user_for_title_selection() {
         while IFS= read -r result; do
             if [ -n "$result" ]; then
                 all_options+=("imdb|$result")
-                local rtitle=$(echo "$result" | cut -d'|' -f1)
-                local ryear=$(echo "$result" | cut -d'|' -f2)
+                local rtitle
+                local ryear
+                rtitle=$(echo "$result" | cut -d'|' -f1)
+                ryear=$(echo "$result" | cut -d'|' -f2)
                 echo "  [$counter] $rtitle $([ -n "$ryear" ] && echo "($ryear)" || echo "")"
                 ((counter++))
             fi
@@ -729,8 +735,10 @@ prompt_user_for_title_selection() {
         while IFS= read -r result; do
             if [ -n "$result" ]; then
                 all_options+=("tmdb|$result")
-                local rtitle=$(echo "$result" | cut -d'|' -f1)
-                local ryear=$(echo "$result" | cut -d'|' -f2)
+                local rtitle
+                local ryear
+                rtitle=$(echo "$result" | cut -d'|' -f1)
+                ryear=$(echo "$result" | cut -d'|' -f2)
                 echo "  [$counter] $rtitle $([ -n "$ryear" ] && echo "($ryear)" || echo "")"
                 ((counter++))
             fi
@@ -794,9 +802,12 @@ prompt_user_for_title_selection() {
             elif [ "$choice" -ge 1 ] && [ "$choice" -lt "$counter" ]; then
                 # Use selected match
                 local selected="${all_options[$((choice-1))]}"
-                local source=$(echo "$selected" | cut -d'|' -f1)
-                local title=$(echo "$selected" | cut -d'|' -f2)
-                local year=$(echo "$selected" | cut -d'|' -f3)
+                local source
+                local title
+                local year
+                source=$(echo "$selected" | cut -d'|' -f1)
+                title=$(echo "$selected" | cut -d'|' -f2)
+                year=$(echo "$selected" | cut -d'|' -f3)
                 echo "✓ Selected from $source: $title ($year)"
                 echo "$title|$year"
                 return 0
