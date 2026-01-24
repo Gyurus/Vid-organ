@@ -1240,7 +1240,7 @@ handle_duplicate_copies() {
         for choice in "${choices[@]}"; do
             choice=$(echo "$choice" | xargs)  # trim whitespace
             if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#copies[@]} ]; then
-                to_keep+=($choice)
+                to_keep+=("$choice")
             fi
         done
     fi
@@ -1548,7 +1548,7 @@ main() {
         local series_info
         series_info=$(extract_series_info "$(basename "$file")")
         
-        if [ $? -eq 0 ] && [ -n "$series_info" ]; then
+        if series_info=$(extract_series_info "$(basename "$file")") && [ -n "$series_info" ]; then
             # This is a TV series episode
             local series_name season_num episode_num episode_title
             series_name=$(echo "$series_info" | cut -d'|' -f1)
@@ -1573,8 +1573,8 @@ main() {
             fi
             
             # Construct episode filename: Series.Name.S01E05.Episode.Title.ext
-            local clean_series=$(echo "$series_name" | sed 's/ /./g')
-            local clean_episode=$(echo "$episode_title" | sed 's/ /./g')
+            local clean_series="${series_name// /.}"
+            local clean_episode="${episode_title// /.}"
             local extension="${file##*.}"
             local new_filename="${clean_series}.S${season_num}E${episode_num}.${clean_episode}.${extension}"
             local target_path="${season_dir}/${new_filename}"
@@ -1889,10 +1889,10 @@ main() {
                 verified_lang=$(ffprobe -v quiet -select_streams a:$i -show_entries stream_tags=language -of csv=p=0 "$file" 2>/dev/null | tr -d '\n\r' | xargs)
                 if [[ "$verified_lang" == "$language_code" ]]; then
                     echo "✓ Track $track_num language verified: $language_code"
-                    track_languages[$i]="$language_code"
+                    track_languages[i]="$language_code"
                 else
                     echo "⚠ Warning: Track $track_num verification failed (expected: $language_code, got: $verified_lang)"
-                    track_languages[$i]="$language_code"
+                    track_languages[i]="$language_code"
                 fi
             done
         fi
@@ -1987,9 +1987,8 @@ main() {
                 local subtitle_path="${moved_subtitles[$i]}"
                 if [ -f "$subtitle_path" ]; then
                     local renamed_path
-                    renamed_path=$(rename_subtitle_to_match_video "$subtitle_path" "$file")
-                    if [ $? -eq 0 ]; then
-                        moved_subtitles[$i]="$renamed_path"
+                    if renamed_path=$(rename_subtitle_to_match_video "$subtitle_path" "$file"); then
+                        moved_subtitles[i]="$renamed_path"
                         ((renamed_count++))
                     fi
                 fi
