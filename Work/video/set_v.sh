@@ -4,17 +4,8 @@
 # Version: 1.6.0
 # Interactive script to organize video files and set audio language metadata
 
-# Color codes for output
-RED=''
-GREEN=''
-YELLOW=''
-BLUE=''
-NC=''
-
 # Script version
 SCRIPT_VERSION="1.6.0"
-SCRIPT_REPO="Gyurus/Vid-organ"
-SCRIPT_RAW_URL="https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"
 
 # Language code pattern for subtitle and video processing
 LANG_PATTERN="(eng|hun|ger|kor|fre|spa|ita|por|rus|jpn)"
@@ -401,97 +392,7 @@ normalize_string() {
 #    - IMDb doesn't provide official developer API
 
 # Verify title and year via TMDB (primary), OMDb (secondary), or IMDb suggestion API (last resort)
-verify_title_year_with_apis() {
-    local title="$1"
-    local year="$2"
 
-    # If no year, skip verification
-    if [ -z "$year" ]; then
-        return 0
-    fi
-
-    # Check master online verification setting
-    if [ "$ENABLE_ONLINE_VERIFICATION" != "true" ]; then
-        echo "WARNING: Online verification disabled (enable_online_verification=false)" >&2
-        return 1
-    fi
-
-    if ! command -v curl >/dev/null 2>&1; then
-        echo "WARNING: curl not installed; skipping API verification" >&2
-        return 2
-    fi
-
-    # Priority 1: TMDB (best data quality and reliability)
-    if [ "$ENABLE_TMDB_VERIFICATION" = "true" ] && [ -n "$TMDB_API_KEY" ]; then
-        local encoded
-        encoded=$(url_encode "$title")
-        local tmdb_url="https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encoded}"
-        if [ -n "$year" ]; then
-            tmdb_url="${tmdb_url}&year=${year}"
-        fi
-
-        local json
-        json=$(curl -s --max-time 10 "$tmdb_url" 2>/dev/null)
-        if [ -n "$json" ] && echo "$json" | grep -q '"total_results":[1-9]'; then
-            # Extract first result
-            local tt
-            tt=$(echo "$json" | grep -o '"title":"[^"]*"' | head -1 | sed -E 's/.*"title":"([^"]*)".*/\1/')
-            local y
-            y=$(echo "$json" | grep -o '"release_date":"[^"]*"' | head -1 | sed -E 's/.*"release_date":"([0-9]{4}).*/\1/')
-
-            local nt1 nt2
-            nt1=$(normalize_string "$title")
-            nt2=$(normalize_string "$tt")
-            if [ "$nt1" = "$nt2" ] && ([ -z "$year" ] || [ "$y" = "$year" ]); then
-                return 0
-            fi
-        fi
-    fi
-
-    # Priority 2: OMDb (good alternative if TMDB fails)
-    if [ -n "$OMDB_API_KEY" ]; then
-        local url="https://www.omdbapi.com/?t=$(url_encode "$title")&y=$year&type=movie&apikey=$OMDB_API_KEY"
-        local json
-        json=$(curl -sL --max-time 10 "$url")
-        if echo "$json" | grep -q '"Response":"True"'; then
-            local y
-            y=$(echo "$json" | grep -o '"Year":"[0-9]\{4\}"' | head -1 | sed -E 's/.*"Year":"([0-9]{4})".*/\1/')
-            local tt
-            tt=$(echo "$json" | grep -o '"Title":"[^"]*"' | head -1 | sed -E 's/.*"Title":"([^"]*)".*/\1/')
-            if [ "$y" = "$year" ]; then
-                return 0
-            fi
-        fi
-    fi
-
-    # Priority 3: IMDb suggestion API (unofficial - use only as last resort)
-    echo "WARNING: Using unofficial IMDb API as last resort - results may be unreliable" >&2
-    local encoded
-    encoded=$(url_encode "$title")
-    local first
-    first=$(printf '%s' "$encoded" | cut -c1 | tr '[:upper:]' '[:lower:]')
-    local imdb_url="https://v2.sg.media-imdb.com/suggestion/${first}/${encoded}.json"
-    local json
-    json=$(curl -sL --max-time 10 "$imdb_url")
-    if [ -z "$json" ]; then
-        echo "WARNING: All API lookups failed for '$title' ($year)" >&2
-        return 1
-    fi
-    # Extract top result title and year
-    local tt
-    tt=$(echo "$json" | grep -o '"l":"[^"]*"' | head -1 | sed -E 's/.*"l":"([^"]*)".*/\1/')
-    local y
-    y=$(echo "$json" | grep -o '"y":[0-9]\{4\}' | head -1 | sed -E 's/.*"y":([0-9]{4}).*/\1/')
-    local nt1 nt2
-    nt1=$(normalize_string "$title")
-    nt2=$(normalize_string "$tt")
-    if [ "$y" = "$year" ] && [ "$nt1" = "$nt2" ]; then
-        return 0
-    else
-        echo "WARNING: No reliable API match found for '$title' ($year)" >&2
-        return 1
-    fi
-}
 
 # Function to search IMDb for movie matches and return results
 search_imdb() {
@@ -1123,35 +1024,7 @@ get_unique_filepath() {
 }
 
 # Function to rename file with languages
-rename_with_languages() {
-    local file="$1"
-    local languages="$2"
 
-    local dir=$(dirname "$file")
-    local filename=$(basename "$file")
-    local extension="${filename##*.}"
-    local base_name="${filename%.*}"
-
-    # Check if filename already contains language metadata (ends with language codes)
-    # Pattern: ends with _ followed by 3-letter language codes separated by underscores
-    if [[ "$base_name" =~ _([a-z]{3}(_[a-z]{3})*)$ ]]; then
-        # Filename already has language metadata, don't add more
-        echo "$file"
-        return
-    fi
-
-    # Create new filename
-    local new_base_name="${base_name}_${languages}"
-    local new_filename="${new_base_name}.${extension}"
-    local new_path="${dir}/${new_filename}"
-
-    if [ "$file" != "$new_path" ]; then
-        mv "$file" "$new_path" 2>/dev/null
-        echo "$new_path"
-    else
-        echo "$file"
-    fi
-}
 
 # Function to get detailed video and audio information
 get_video_details() {
@@ -1557,7 +1430,7 @@ main() {
             echo "  Episode: $episode_num - $episode_title"
             
             # Create series directory structure: Serials.org/Series Name/Season XX/
-            local serials_base_dir="${input_dir}/${DEFAULT_SERIALS_DIR}"
+            local serials_base_dir="${video_folder}/${DEFAULT_SERIALS_DIR}"
             local series_dir="${serials_base_dir}/${series_name}"
             local season_dir="${series_dir}/Season ${season_num}"
             
