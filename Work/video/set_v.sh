@@ -4,17 +4,8 @@
 # Version: 1.6.0
 # Interactive script to organize video files and set audio language metadata
 
-# Color codes for output
-RED=''
-GREEN=''
-YELLOW=''
-BLUE=''
-NC=''
-
 # Script version
 SCRIPT_VERSION="1.6.0"
-SCRIPT_REPO="Gyurus/Vid-organ"
-SCRIPT_RAW_URL="https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"
 
 # Language code pattern for subtitle and video processing
 LANG_PATTERN="(eng|hun|ger|kor|fre|spa|ita|por|rus|jpn)"
@@ -110,8 +101,9 @@ check_for_updates() {
 update_script() {
     echo "Downloading update..."
     
-    local script_dir=$(dirname "$0")
-    local script_name=$(basename "$0")
+    local script_dir script_name
+    script_dir=$(dirname "$0")
+    script_name=$(basename "$0")
     local backup_file="${script_dir}/${script_name}.bak"
     local temp_file="${script_dir}/.${script_name}.tmp"
     
@@ -442,7 +434,7 @@ verify_title_year_with_apis() {
             local nt1 nt2
             nt1=$(normalize_string "$title")
             nt2=$(normalize_string "$tt")
-            if [ "$nt1" = "$nt2" ] && ([ -z "$year" ] || [ "$y" = "$year" ]); then
+            if [ "$nt1" = "$nt2" ] && { [ -z "$year" ] || [ "$y" = "$year" ]; }; then
                 return 0
             fi
         fi
@@ -450,7 +442,8 @@ verify_title_year_with_apis() {
 
     # Priority 2: OMDb (good alternative if TMDB fails)
     if [ -n "$OMDB_API_KEY" ]; then
-        local url="https://www.omdbapi.com/?t=$(url_encode "$title")&y=$year&type=movie&apikey=$OMDB_API_KEY"
+        local url
+        url="https://www.omdbapi.com/?t=$(url_encode "$title")&y=$year&type=movie&apikey=$OMDB_API_KEY"
         local json
         json=$(curl -sL --max-time 10 "$url")
         if echo "$json" | grep -q '"Response":"True"'; then
@@ -577,8 +570,10 @@ check_imdb_match() {
     
     # Check if first result matches
     local first_result="${results[0]}"
-    local found_title=$(echo "$first_result" | cut -d'|' -f1)
-    local found_year=$(echo "$first_result" | cut -d'|' -f2)
+    local found_title
+    local found_year
+    found_title=$(echo "$first_result" | cut -d'|' -f1)
+    found_year=$(echo "$first_result" | cut -d'|' -f2)
     
     local norm_input
     norm_input=$(normalize_string "$title")
@@ -586,7 +581,7 @@ check_imdb_match() {
     norm_found=$(normalize_string "$found_title")
     
     # Exact match or very close match
-    if [ "$norm_input" = "$norm_found" ] && ([ -z "$year" ] || [ "$found_year" = "$year" ]); then
+    if [ "$norm_input" = "$norm_found" ] && { [ -z "$year" ] || [ "$found_year" = "$year" ]; }; then
         echo ""
         echo "✓ IMDb Match Found:"
         echo "  Title: $found_title"
@@ -604,8 +599,10 @@ check_imdb_match() {
     
     local counter=1
     for result in "${results[@]}"; do
-        local rtitle=$(echo "$result" | cut -d'|' -f1)
-        local ryear=$(echo "$result" | cut -d'|' -f2)
+        local rtitle
+        local ryear
+        rtitle=$(echo "$result" | cut -d'|' -f1)
+        ryear=$(echo "$result" | cut -d'|' -f2)
         echo "  $counter. $rtitle $([ -n "$ryear" ] && echo "($ryear)" || echo "")"
         ((counter++))
     done
@@ -720,8 +717,10 @@ prompt_user_for_title_selection() {
         while IFS= read -r result; do
             if [ -n "$result" ]; then
                 all_options+=("imdb|$result")
-                local rtitle=$(echo "$result" | cut -d'|' -f1)
-                local ryear=$(echo "$result" | cut -d'|' -f2)
+                local rtitle
+                local ryear
+                rtitle=$(echo "$result" | cut -d'|' -f1)
+                ryear=$(echo "$result" | cut -d'|' -f2)
                 echo "  [$counter] $rtitle $([ -n "$ryear" ] && echo "($ryear)" || echo "")"
                 ((counter++))
             fi
@@ -735,8 +734,10 @@ prompt_user_for_title_selection() {
         while IFS= read -r result; do
             if [ -n "$result" ]; then
                 all_options+=("tmdb|$result")
-                local rtitle=$(echo "$result" | cut -d'|' -f1)
-                local ryear=$(echo "$result" | cut -d'|' -f2)
+                local rtitle
+                local ryear
+                rtitle=$(echo "$result" | cut -d'|' -f1)
+                ryear=$(echo "$result" | cut -d'|' -f2)
                 echo "  [$counter] $rtitle $([ -n "$ryear" ] && echo "($ryear)" || echo "")"
                 ((counter++))
             fi
@@ -800,9 +801,12 @@ prompt_user_for_title_selection() {
             elif [ "$choice" -ge 1 ] && [ "$choice" -lt "$counter" ]; then
                 # Use selected match
                 local selected="${all_options[$((choice-1))]}"
-                local source=$(echo "$selected" | cut -d'|' -f1)
-                local title=$(echo "$selected" | cut -d'|' -f2)
-                local year=$(echo "$selected" | cut -d'|' -f3)
+                local source
+                local title
+                local year
+                source=$(echo "$selected" | cut -d'|' -f1)
+                title=$(echo "$selected" | cut -d'|' -f2)
+                year=$(echo "$selected" | cut -d'|' -f3)
                 echo "✓ Selected from $source: $title ($year)"
                 echo "$title|$year"
                 return 0
@@ -925,7 +929,7 @@ set_audio_language() {
     
     if [ "$use_movflags" = true ]; then
         if ffmpeg -hide_banner -loglevel error -y -i "$file" -map 0 -c copy $format_opt -movflags use_metadata_tags \
-            -metadata:s:a:$track_index language="$language" "$temp_file"; then
+            -metadata:s:a:"$track_index" language="$language" "$temp_file"; then
             mv "$temp_file" "$file" 2>/dev/null
             echo "Language set successfully (ffmpeg)"
             return 0
@@ -936,7 +940,7 @@ set_audio_language() {
         fi
     else
         if ffmpeg -hide_banner -loglevel error -y -i "$file" -map 0 -c copy $format_opt \
-            -metadata:s:a:$track_index language="$language" "$temp_file"; then
+            -metadata:s:a:"$track_index" language="$language" "$temp_file"; then
             mv "$temp_file" "$file" 2>/dev/null
             echo "Language set successfully (ffmpeg)"
             return 0
@@ -1235,7 +1239,7 @@ handle_duplicate_copies() {
         for choice in "${choices[@]}"; do
             choice=$(echo "$choice" | xargs)  # trim whitespace
             if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#copies[@]} ]; then
-                to_keep+=($choice)
+                to_keep+=("$choice")
             fi
         done
     fi
@@ -1541,9 +1545,8 @@ main() {
         # Check if this is a TV series or movie
         echo "Analyzing file..."
         local series_info
-        series_info=$(extract_series_info "$(basename "$file")")
         
-        if [ $? -eq 0 ] && [ -n "$series_info" ]; then
+        if series_info=$(extract_series_info "$(basename "$file")") && [ -n "$series_info" ]; then
             # This is a TV series episode
             local series_name season_num episode_num episode_title
             series_name=$(echo "$series_info" | cut -d'|' -f1)
@@ -1568,8 +1571,8 @@ main() {
             fi
             
             # Construct episode filename: Series.Name.S01E05.Episode.Title.ext
-            local clean_series=$(echo "$series_name" | sed 's/ /./g')
-            local clean_episode=$(echo "$episode_title" | sed 's/ /./g')
+            local clean_series="${series_name// /.}"
+            local clean_episode="${episode_title// /.}"
             local extension="${file##*.}"
             local new_filename="${clean_series}.S${season_num}E${episode_num}.${clean_episode}.${extension}"
             local target_path="${season_dir}/${new_filename}"
@@ -1881,7 +1884,7 @@ main() {
                 
                 # Verify the language was set correctly
                 local verified_lang
-                verified_lang=$(ffprobe -v quiet -select_streams a:$i -show_entries stream_tags=language -of csv=p=0 "$file" 2>/dev/null | tr -d '\n\r' | xargs)
+                verified_lang=$(ffprobe -v quiet -select_streams a:"$i" -show_entries stream_tags=language -of csv=p=0 "$file" 2>/dev/null | tr -d '\n\r' | xargs)
                 if [[ "$verified_lang" == "$language_code" ]]; then
                     echo "✓ Track $track_num language verified: $language_code"
                     track_languages[$i]="$language_code"
@@ -1982,8 +1985,7 @@ main() {
                 local subtitle_path="${moved_subtitles[$i]}"
                 if [ -f "$subtitle_path" ]; then
                     local renamed_path
-                    renamed_path=$(rename_subtitle_to_match_video "$subtitle_path" "$file")
-                    if [ $? -eq 0 ]; then
+                    if renamed_path=$(rename_subtitle_to_match_video "$subtitle_path" "$file"); then
                         moved_subtitles[$i]="$renamed_path"
                         ((renamed_count++))
                     fi
