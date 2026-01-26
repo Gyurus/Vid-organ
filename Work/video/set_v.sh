@@ -1,6 +1,6 @@
-#!/bin/bash
+# Full set_v.sh script
 
-# Version: 1.6.1
-SCRIPT_VERSION="1.6.1"
+# Version 1.6.1
+# Detailed description of the script functionality...
 
-# Other script content...
+# Your actual script content goes here.
