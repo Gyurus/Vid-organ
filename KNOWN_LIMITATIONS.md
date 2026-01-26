@@ -21,22 +21,15 @@ If more robust JSON parsing is needed:
 - Fall back to current grep/sed approach if `jq` not installed
 - Keep zero-dependency approach as default
 
-## Return Code vs String Matching
+## IMDb Match Status Handling
 
-The workflow uses `grep -q "✓ IMDb Match Found"` to check verification success. While functional, a cleaner approach would be checking exit codes directly.
+The workflow now checks the exit status of `check_imdb_match` directly rather than parsing output text. This avoids relying on the exact wording of the match banner.
 
 ### Current Approach:
 ```bash
-if ! check_imdb_match "$movie_title" "$movie_year" 2>&1 | grep -q "✓ IMDb Match Found"; then
+if imdb_output=$(check_imdb_match "$movie_title" "$movie_year" 2>&1); then
+    # Exact match found
 ```
-
-### Alternative (Future):
-```bash
-if ! check_imdb_match "$movie_title" "$movie_year"; then
-    # Exit code 0 = exact match, 1 = suggestions available
-```
-
-This is a low-priority improvement since the current method works reliably.
 
 ## Array Bounds
 

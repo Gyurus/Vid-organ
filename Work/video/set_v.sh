@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Simple Video Organizer and Language Setter
-# Version: 1.7.0
+# Version: 1.7.1
 # Interactive script to organize video files and set audio language metadata
 
 # Color codes for output
@@ -12,7 +12,7 @@ BLUE=''
 NC=''
 
 # Script version
-SCRIPT_VERSION="1.7.0"
+SCRIPT_VERSION="1.7.1"
 SCRIPT_REPO="Gyurus/Vid-organ"
 SCRIPT_RAW_URL="https://raw.githubusercontent.com/Gyurus/Vid-organ/main/Work/video"
 
@@ -2134,12 +2134,14 @@ main() {
             local imdb_matches=""
             if [ "$ENABLE_IMDB_VERIFICATION" = "true" ]; then
                 echo "Checking IMDb..."
-                if ! check_imdb_match "$movie_title" "$movie_year" 2>&1 | grep -q "✓ IMDb Match Found"; then
-                    # Get IMDb results if no exact match - use new search function
-                    imdb_matches=$(search_imdb "$movie_title" "$movie_year")
-                else
+                local imdb_output
+                if imdb_output=$(check_imdb_match "$movie_title" "$movie_year" 2>&1); then
+                    [ -n "$imdb_output" ] && echo "$imdb_output"
                     # Exact match found, continue without prompting
                     imdb_matches=""
+                else
+                    # Get IMDb results if no exact match - use new search function
+                    imdb_matches=$(search_imdb "$movie_title" "$movie_year")
                 fi
             fi
         else
