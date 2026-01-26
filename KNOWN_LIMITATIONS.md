@@ -27,8 +27,7 @@ The workflow now checks the exit status of `check_imdb_match` directly rather th
 
 ### Current Approach:
 ```bash
-imdb_output=$(check_imdb_match "$movie_title" "$movie_year" 2>&1)
-if [ "$?" -eq 0 ]; then
+if imdb_output=$(check_imdb_match "$movie_title" "$movie_year" 2>&1); then
     # Exact match found
 ```
 

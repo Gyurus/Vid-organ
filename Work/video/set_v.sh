@@ -2135,8 +2135,7 @@ main() {
             if [ "$ENABLE_IMDB_VERIFICATION" = "true" ]; then
                 echo "Checking IMDb..."
                 local imdb_output
-                imdb_output=$(check_imdb_match "$movie_title" "$movie_year" 2>&1)
-                if [ "$?" -eq 0 ]; then
+                if imdb_output=$(check_imdb_match "$movie_title" "$movie_year" 2>&1); then
                     [ -n "$imdb_output" ] && echo "$imdb_output"
                     # Exact match found, continue without prompting
                     imdb_matches=""
