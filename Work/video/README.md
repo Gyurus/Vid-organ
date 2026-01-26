@@ -171,7 +171,7 @@ The script uses modern 256-color ANSI palette for better visual clarity:
 
 ## Version
 
-**Current:** v1.5.2
+**Current:** v1.7.1
 
 Updates are checked automatically from GitHub on startup (can be disabled in INI).
 
