@@ -2134,12 +2134,15 @@ main() {
             local imdb_matches=""
             if [ "$ENABLE_IMDB_VERIFICATION" = "true" ]; then
                 echo "Checking IMDb..."
-                if ! check_imdb_match "$movie_title" "$movie_year" 2>&1 | grep -q "✓ IMDb Match Found"; then
-                    # Get IMDb results if no exact match - use new search function
-                    imdb_matches=$(search_imdb "$movie_title" "$movie_year")
-                else
+                local imdb_output
+                imdb_output=$(check_imdb_match "$movie_title" "$movie_year" 2>&1)
+                if [ "$?" -eq 0 ]; then
+                    [ -n "$imdb_output" ] && echo "$imdb_output"
                     # Exact match found, continue without prompting
                     imdb_matches=""
+                else
+                    # Get IMDb results if no exact match - use new search function
+                    imdb_matches=$(search_imdb "$movie_title" "$movie_year")
                 fi
             fi
         else
